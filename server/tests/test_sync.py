@@ -116,3 +116,9 @@ def test_images_roundtrip(client):
     assert client.put("/api/images/..%2Fevil.jpg", content=b"x", headers=H).status_code in (400, 404)
     assert client.put("/api/images/evil.exe", content=b"x", headers=H).status_code == 400
     assert client.get("/api/images", headers={"X-API-Key": "notogri"}).status_code == 401
+
+
+def test_pull_reports_max_seq(client):
+    push(client, [product("p1"), product("p2")])
+    r = client.get("/api/sync/pull?since=0", headers=H).json()
+    assert r["max_seq"] == 2

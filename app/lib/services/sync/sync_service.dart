@@ -237,6 +237,14 @@ class SyncService {
 
     while (true) {
       final resp = await api.get('/api/sync/pull', {'since': '$cursor', 'limit': '500'});
+      final maxSeq = (resp['max_seq'] as num?)?.toInt();
+      if (maxSeq != null && cursor > maxSeq) {
+        // Server bazasi yangidan boshlangan: eski kursor bilan yangi yozuvlar
+        // o'tkazib yuborilardi. Noldan qayta yuklaymiz.
+        cursor = 0;
+        await settings.set(SettingKeys.syncCursor, '0');
+        continue;
+      }
       final changes = (resp['changes'] as List? ?? const []).cast<Map<String, dynamic>>();
       // Bitta sahifa ichida ham entity tartibini saqlaymiz (FK uchun).
       changes.sort((a, b) {

@@ -134,4 +134,16 @@ void main() {
     expect((await b.products.byId(p.id))!.imagePath, name);
     expect(File('${dirB.path}/$name').readAsBytesSync(), [0xFF, 0xD8, 1, 2, 3]);
   }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
+
+  test('server yangidan o\'rnatilsa (eski kursor) ham hamma narsa olinadi', () async {
+    final (a, syncA) = await device('K1');
+    final (b, syncB) = await device('T1');
+    final p = await a.addProduct('Kursor tovari', price: 1000, stock: 2, barcode: 'CUR${DateTime.now().millisecondsSinceEpoch}');
+    await syncA.syncNow();
+    // B avval boshqa (eski) serverda ishlagan: kursori juda katta.
+    await b.settings.set(SettingKeys.syncCursor, '99999999');
+    await syncB.syncNow();
+    expect(syncB.status.value.state, SyncState.ok, reason: syncB.status.value.message);
+    expect(await b.products.byId(p.id), isNotNull);
+  }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
 }

@@ -142,6 +142,7 @@ def pull(session: Session, device_id: str, since: int, limit: int) -> dict:
     )
     has_more = len(rows) > limit
     rows = rows[:limit]
+    counter = session.get(SyncCounter, 1)
     dev_row = session.get(Device, device_id) or Device(id=device_id, pushed_count=0)
     dev_row.last_pull_at = now_ms()
     session.add(dev_row)
@@ -150,4 +151,7 @@ def pull(session: Session, device_id: str, since: int, limit: int) -> dict:
         "changes": [{"entity": r.entity, "id": r.id, "seq": r.seq, "data": r.data} for r in rows],
         "cursor": rows[-1].seq if rows else since,
         "has_more": has_more,
+        # Mijoz kursori bundan katta bo'lsa — server yangidan o'rnatilgan
+        # (masalan, yangi PosServer.exe papkasi): mijoz noldan qayta yuklaydi.
+        "max_seq": counter.value if counter else 0,
     }
