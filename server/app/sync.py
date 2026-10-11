@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import time
+import uuid
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Device, SyncCounter, SyncRecord
+from .models import Device, ServerInfo, SyncCounter, SyncRecord
 
 # Ilovadagi SyncEntities bilan bir xil bo'lishi shart.
 ENTITIES = (
@@ -25,6 +26,15 @@ ENTITIES = (
 # Qoldiq shu harakatlar yig'indisidan hisoblanadi, shuning uchun parallel
 # sotuvlar bir-birini "bosib" ketmaydi.
 IMMUTABLE = {"sale_items", "stock_movements", "audit_log"}
+
+
+def server_id(session: Session) -> str:
+    info = session.get(ServerInfo, 1)
+    if info is None:
+        info = ServerInfo(id=1, server_id=uuid.uuid4().hex)
+        session.add(info)
+        session.commit()
+    return info.server_id
 
 
 def now_ms() -> int:
@@ -154,4 +164,5 @@ def pull(session: Session, device_id: str, since: int, limit: int) -> dict:
         # Mijoz kursori bundan katta bo'lsa — server yangidan o'rnatilgan
         # (masalan, yangi PosServer.exe papkasi): mijoz noldan qayta yuklaydi.
         "max_seq": counter.value if counter else 0,
+        "server_id": server_id(session),
     }

@@ -75,6 +75,10 @@ class SyncService {
   Timer? _debounce;
   bool _running = false;
 
+  /// Yangi serverga hamma narsa qayta yuborilmoqda: konflikt ogohlantirishlari
+  /// bu holatda shovqin bo'ladi (server versiyasi shunchaki qabul qilinadi).
+  bool _resync = false;
+
   static const _immutable = {SyncEntities.saleItems, SyncEntities.stockMovements, SyncEntities.auditLog};
 
   TableInfo _table(String entity) => switch (entity) {
@@ -141,11 +145,14 @@ class SyncService {
       final apiKey = (await settings.get(SettingKeys.syncApiKey)) ?? '';
       final deviceId = await settings.deviceId();
       final client = _Api(baseUrl, apiKey, deviceId);
+      final serverId = await _checkServer(client);
       final pushed = await _push(client, deviceId);
       final pulled = await _pull(client);
       await _syncImages(client);
       final now = DateTime.now();
       await settings.set(SettingKeys.syncLastAt, '${now.millisecondsSinceEpoch}');
+      if (serverId != null) await settings.set(SettingKeys.syncServerId, serverId);
+      _resync = false;
       status.value = SyncStatus(
         state: SyncState.ok,
         lastSyncAt: now,
@@ -168,6 +175,20 @@ class SyncService {
     } finally {
       _running = false;
     }
+  }
+
+  /// Server bazasi almashganmi (yangi PosServer papkasi, qayta o'rnatish)?
+  /// Almashgan bo'lsa — eski serverga yuborilgan yozuvlar yangisida yo'q:
+  /// hammasini qayta yuborish uchun belgilaymiz va noldan yuklaymiz.
+  Future<String?> _checkServer(_Api api) async {
+    final id = (await api.get('/api/health', const {}))['server_id'] as String?;
+    if (id == null || id == await settings.get(SettingKeys.syncServerId)) return id;
+    for (final e in SyncEntities.all) {
+      await db.customUpdate('UPDATE ${_table(e).actualTableName} SET dirty = 1', updates: {_table(e)});
+    }
+    await settings.set(SettingKeys.syncCursor, '0');
+    _resync = true;
+    return id;
   }
 
   // --------------------------------------------------------------------------
@@ -209,7 +230,7 @@ class SyncService {
           final m = c as Map<String, dynamic>;
           final serverData = Map<String, Object?>.from(m['data'] as Map);
           await _applyRow(entity, serverData, force: true);
-          if (!_immutable.contains(entity)) {
+          if (!_immutable.contains(entity) && !_resync) {
             await alerts.system(
               'Sinxronlash konflikti',
               '$entity yozuvi boshqa qurilmada yangiroq o\'zgartirilgan — server versiyasi qabul qilindi.',

@@ -122,3 +122,9 @@ def test_pull_reports_max_seq(client):
     push(client, [product("p1"), product("p2")])
     r = client.get("/api/sync/pull?since=0", headers=H).json()
     assert r["max_seq"] == 2
+
+
+def test_server_id_stable(client):
+    a = client.get("/api/health").json()["server_id"]
+    assert a and client.get("/api/health").json()["server_id"] == a
+    assert client.get("/api/sync/pull?since=0", headers=H).json()["server_id"] == a

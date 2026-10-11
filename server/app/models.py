@@ -54,3 +54,14 @@ class Device(Base):
     last_push_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     last_pull_at: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     pushed_count: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
+class ServerInfo(Base):
+    """Bitta qatorli: shu server bazasining tasodifiy ID si. Baza yangidan
+    boshlansa (yangi PosServer papkasi), ID o'zgaradi va qurilmalar barcha
+    ma'lumotlarini qayta yuboradi."""
+
+    __tablename__ = "server_info"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    server_id: Mapped[str] = mapped_column(String(64), nullable=False)

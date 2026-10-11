@@ -62,9 +62,10 @@ class PushBody(BaseModel):
 
 
 @app.get("/api/health")
-def health() -> dict:
+def health(session: SessionDep) -> dict:
     return {
         "status": "ok",
+        "server_id": sync.server_id(session),
         "service": "pos-terminal-sync",
         "version": __version__,
         "time": sync.now_ms(),

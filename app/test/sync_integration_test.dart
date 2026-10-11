@@ -146,4 +146,21 @@ void main() {
     expect(syncB.status.value.state, SyncState.ok, reason: syncB.status.value.message);
     expect(await b.products.byId(p.id), isNotNull);
   }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
+
+  test('eski serverga yuborilgan tovar yangi serverga qayta yuboriladi', () async {
+    final (a, syncA) = await device('K1');
+    final (b, syncB) = await device('T1');
+    final p = await a.addProduct('Eski server tovari', price: 1000, stock: 5, barcode: 'OLD${DateTime.now().millisecondsSinceEpoch}');
+    // A bu tovarni "eski" serverga yuborgan: dirty = 0, boshqa server ID si.
+    for (final t in ['products', 'stock_movements', 'audit_log', 'users', 'categories']) {
+      await a.db.customStatement('UPDATE $t SET dirty = 0');
+    }
+    await a.settings.set(SettingKeys.syncServerId, 'eski-server');
+    await syncA.syncNow();
+    expect(syncA.status.value.state, SyncState.ok, reason: syncA.status.value.message);
+    await syncB.syncNow();
+    final pb = await b.products.byId(p.id);
+    expect(pb, isNotNull);
+    expect(pb!.stockQty, 5);
+  }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
 }
