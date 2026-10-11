@@ -44,8 +44,7 @@ Ilova Flutter'da yozilgan. Bitta kod bazasidan barcha platformalar uchun build q
 3. GitHub'da **Actions** bo'limiga o'ting. `build` jarayoni avtomatik boshlanadi:
    testlar → Android, iOS, Windows, macOS, Linux build.
 4. Tugagach, jarayon sahifasining pastidagi **Artifacts** bo'limidan fayllarni yuklab oling:
-   - `android` → `pos-terminal-android-universal.apk` (telefon/planshet uchun),
-     `pos-terminal-android-arm64.apk` (kichikroq, zamonaviy telefonlar), `.aab` (Play Market uchun);
+   - `android` → `pos-terminal-android.apk` (telefon/planshet uchun); `.aab` (Play Market uchun) faqat teg qo'yilganda;
    - `windows` → `pos-terminal-windows-x64.zip`;
    - `macos` → `pos-terminal-macos.zip`;
    - `linux` → `pos-terminal-linux-x64.tar.gz`;
@@ -126,7 +125,7 @@ USB printer uchun foydalanuvchini `lp` guruhiga qo'shing: `sudo usermod -aG lp $
 ## 5. Android va iOS (telefon / planshet)
 
 ### Android
-1. `pos-terminal-android-universal.apk` faylini telefonga o'tkazing (Telegram, USB, Google Drive).
+1. `pos-terminal-android.apk` faylini telefonga o'tkazing (Telegram, USB, Google Drive).
 2. Faylni oching. "Noma'lum manbalardan o'rnatish"ga ruxsat so'rasa — ruxsat bering.
 3. Birinchi ochilishda ruxsatlar: **Kamera** (shtrix-kod skaneri), **Yaqin atrofdagi qurilmalar /
    Bluetooth** (printer), **Bildirishnomalar** (alertlar) — hammasiga ruxsat bering.
