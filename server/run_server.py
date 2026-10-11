@@ -36,14 +36,26 @@ def load_api_key(folder: Path) -> str:
     return key
 
 
-def local_ip() -> str:
-    # Hech narsa yubormaydi: faqat tarmoqqa chiqadigan interfeys manzilini aniqlaydi.
+def local_ips() -> list[str]:
+    """Kompyuterning barcha lokal IPv4 manzillari (asosiysi birinchi)."""
+    ips: list[str] = []
     try:
+        # Hech narsa yubormaydi: faqat tarmoqqa chiqadigan interfeys manzilini aniqlaydi.
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("10.255.255.255", 1))
-            return s.getsockname()[0]
+            ips.append(s.getsockname()[0])
     except OSError:
-        return "127.0.0.1"
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ip = info[4][0]
+            if ip not in ips and not ip.startswith("127."):
+                ips.append(ip)
+    except OSError:
+        pass
+    # Wi-Fi odatda 192.168.x.x — shunday manzillar oldinda tursin.
+    ips.sort(key=lambda ip: 0 if ip.startswith("192.168.") else 1)
+    return ips or ["127.0.0.1"]
 
 
 def open_firewall() -> None:
@@ -55,13 +67,18 @@ def open_firewall() -> None:
             ["netsh", "advfirewall", "firewall", "show", "rule", f"name={rule}"],
             capture_output=True,
         ).returncode == 0
-        if not exists:
-            subprocess.run(
-                ["netsh", "advfirewall", "firewall", "add", "rule", f"name={rule}",
-                 "dir=in", "action=allow", "protocol=TCP", f"localport={PORT}"],
-                capture_output=True,
-            )
-    except OSError:
+        if exists:
+            return
+        args = f'advfirewall firewall add rule name="{rule}" dir=in action=allow protocol=TCP localport={PORT} profile=any'
+        argv = ["netsh", "advfirewall", "firewall", "add", "rule", f"name={rule}", "dir=in", "action=allow",
+                "protocol=TCP", f"localport={PORT}", "profile=any"]
+        added = subprocess.run(argv, capture_output=True).returncode == 0
+        if not added:
+            # Administrator huquqi kerak: Windows bir marta "Ha" deb so'raydi.
+            import ctypes
+
+            ctypes.windll.shell32.ShellExecuteW(None, "runas", "netsh", args, None, 0)
+    except (OSError, AttributeError):
         pass
 
 
@@ -75,19 +92,25 @@ def main() -> None:
     print("=" * 56)
     print("  POS Terminal - sinxronlash serveri ishlayapti")
     print("=" * 56)
-    print(f"  Server manzili : http://{local_ip()}:{PORT}")
+    ips = local_ips()
+    print(f"  Server manzili : http://{ips[0]}:{PORT}")
+    for ip in ips[1:]:
+        print(f"  (yoki          : http://{ip}:{PORT})")
     print(f"  API kalit      : {os.environ['POS_API_KEY']}")
     print()
     print("  Shu ikkalasini har bir qurilmada yozing:")
     print("  Sozlamalar > Sinxronlash")
     print("  Bu oynani yopmang (yopsangiz sinxronlash to'xtaydi).")
+    print("  Pastda har bir qurilma ulanganda qator chiqadi:")
+    print("  push = yubordi, pull = oldi. Telefon IP si ko'rinmasa,")
+    print("  telefon serverga yetib kelmayapti (Wi-Fi yoki firewall).")
     print("=" * 56, flush=True)
 
     import uvicorn
 
     from app.main import app
 
-    uvicorn.run(app, host="0.0.0.0", port=PORT, loop="asyncio", http="h11", ws="none", log_level="warning")
+    uvicorn.run(app, host="0.0.0.0", port=PORT, loop="asyncio", http="h11", ws="none", log_level="info")
 
 
 if __name__ == "__main__":
