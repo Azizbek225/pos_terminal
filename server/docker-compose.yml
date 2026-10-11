@@ -26,8 +26,12 @@ services:
     environment:
       POS_DATABASE_URL: postgresql+psycopg://pos:${POSTGRES_PASSWORD}@db:5432/pos
       POS_API_KEY: ${POS_API_KEY:?.env faylida POS_API_KEY yozing}
+      POS_IMAGES_DIR: /data/images
+    volumes:
+      - pos_images:/data/images
     ports:
       - "8000:8000"
 
 volumes:
   pos_pgdata:
+  pos_images:

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_terminal/core/constants.dart';
 import 'package:pos_terminal/data/database.dart';
 import 'package:pos_terminal/data/repositories/settings_repository.dart';
+import 'package:pos_terminal/services/product_images.dart';
 import 'package:pos_terminal/services/sync/sync_service.dart';
 import 'package:pos_terminal/state/cart.dart';
 import 'package:drift/drift.dart' show Value;
@@ -106,5 +107,60 @@ void main() {
 
     await a.close();
     await b.close();
+  }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
+
+  test('tovar rasmi boshqa qurilmaga ham o\'tadi', () async {
+    final (a, syncA) = await device('K1');
+    final (b, syncB) = await device('T1');
+    final dirA = Directory.systemTemp.createTempSync('imgA');
+    final dirB = Directory.systemTemp.createTempSync('imgB');
+    addTearDown(() {
+      ProductImages.debugDir = null;
+      dirA.deleteSync(recursive: true);
+      dirB.deleteSync(recursive: true);
+    });
+
+    final name = '${DateTime.now().microsecondsSinceEpoch}-rasm.jpg';
+    File('${dirA.path}/$name').writeAsBytesSync([0xFF, 0xD8, 1, 2, 3]);
+    final p = await a.addProduct('Rasmli chelak', price: 50000, stock: 1, barcode: '478${DateTime.now().millisecondsSinceEpoch % 10000000000}');
+    await a.products.save(ProductsCompanion(id: Value(p.id), imagePath: Value(name)));
+
+    ProductImages.debugDir = dirA.path;
+    await syncA.syncNow();
+    expect(syncA.status.value.state, SyncState.ok, reason: syncA.status.value.message);
+
+    ProductImages.debugDir = dirB.path;
+    await syncB.syncNow();
+    expect((await b.products.byId(p.id))!.imagePath, name);
+    expect(File('${dirB.path}/$name').readAsBytesSync(), [0xFF, 0xD8, 1, 2, 3]);
+  }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
+
+  test('server yangidan o\'rnatilsa (eski kursor) ham hamma narsa olinadi', () async {
+    final (a, syncA) = await device('K1');
+    final (b, syncB) = await device('T1');
+    final p = await a.addProduct('Kursor tovari', price: 1000, stock: 2, barcode: 'CUR${DateTime.now().millisecondsSinceEpoch}');
+    await syncA.syncNow();
+    // B avval boshqa (eski) serverda ishlagan: kursori juda katta.
+    await b.settings.set(SettingKeys.syncCursor, '99999999');
+    await syncB.syncNow();
+    expect(syncB.status.value.state, SyncState.ok, reason: syncB.status.value.message);
+    expect(await b.products.byId(p.id), isNotNull);
+  }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
+
+  test('eski serverga yuborilgan tovar yangi serverga qayta yuboriladi', () async {
+    final (a, syncA) = await device('K1');
+    final (b, syncB) = await device('T1');
+    final p = await a.addProduct('Eski server tovari', price: 1000, stock: 5, barcode: 'OLD${DateTime.now().millisecondsSinceEpoch}');
+    // A bu tovarni "eski" serverga yuborgan: dirty = 0, boshqa server ID si.
+    for (final t in ['products', 'stock_movements', 'audit_log', 'users', 'categories']) {
+      await a.db.customStatement('UPDATE $t SET dirty = 0');
+    }
+    await a.settings.set(SettingKeys.syncServerId, 'eski-server');
+    await syncA.syncNow();
+    expect(syncA.status.value.state, SyncState.ok, reason: syncA.status.value.message);
+    await syncB.syncNow();
+    final pb = await b.products.byId(p.id);
+    expect(pb, isNotNull);
+    expect(pb!.stockQty, 5);
   }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
 }

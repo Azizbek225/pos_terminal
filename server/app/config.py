@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # Barcha qurilmalar shu kalit bilan ulanadi (ilovadagi "API kalit").
     api_key: str = "change-me"
 
+    # Tovar rasmlari saqlanadigan papka (Docker'da volume ga ulang).
+    images_dir: str = "./images"
+
     # Bitta pull so'rovida qaytariladigan maksimal yozuvlar soni.
     max_pull_limit: int = 2000
 

@@ -575,7 +575,14 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
                   await _save();
                   try {
                     final msg = await service.testConnection();
-                    if (context.mounted) showMessage(context, msg);
+                    // Ulanish ishlasa — sinxronlashni avtomatik yoqamiz (aks holda
+                    // "Ulandi" chiqadi-yu, ma'lumot almashmaydi).
+                    if (!_enabled) {
+                      setState(() => _enabled = true);
+                      await _save();
+                    }
+                    await service.syncNow();
+                    if (context.mounted) showMessage(context, '$msg. Sinxronlash yoqildi.');
                   } catch (e) {
                     if (context.mounted) showMessage(context, e.toString(), error: true);
                   }
@@ -589,13 +596,28 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
                     "To'liq qayta yuklash",
                     "Serverdagi barcha ma'lumotlar qaytadan yuklab olinadi (yangi qurilma ulanganda foydali).",
                   )) {
+                    if (!_enabled) {
+                      if (context.mounted) showMessage(context, "Avval 'Sinxronlashni yoqish' ni yoqing va saqlang", error: true);
+                      return;
+                    }
                     await service.resetCursor();
                     await service.syncNow();
+                    if (context.mounted) showMessage(context, service.status.value.message);
                   }
                 },
                 child: const Text("Serverdan to'liq yuklash"),
               ),
-              OutlinedButton(onPressed: service.syncNow, child: const Text('Hozir sinxronlash')),
+              OutlinedButton(
+                onPressed: () async {
+                  if (!_enabled) {
+                    showMessage(context, "Avval 'Sinxronlashni yoqish' ni yoqing va saqlang", error: true);
+                    return;
+                  }
+                  await service.syncNow();
+                  if (context.mounted) showMessage(context, service.status.value.message);
+                },
+                child: const Text('Hozir sinxronlash'),
+              ),
               FilledButton(onPressed: _save, child: const Text('Saqlash')),
             ],
           ),

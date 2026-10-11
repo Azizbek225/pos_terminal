@@ -154,7 +154,23 @@ klassik Bluetooth printerlar iOS'da ishlamaydi. Eng ishonchli variant — **Wi-F
 
 Server — kichik FastAPI dastur + PostgreSQL. U faqat qurilmalar orasida o'zgarishlarni almashadi.
 
-### 6.1. Docker bilan (tavsiya etiladi)
+### 6.0. Eng oson yo'l: Windows kompyuterda PosServer.exe
+
+Docker ham, Python ham kerak emas.
+
+1. GitHub → **Actions** → oxirgi yashil build → **Artifacts** bo'limidan `server-windows` ni yuklab oling,
+   ichidagi `PosServer.exe` ni masalan `C:\PosServer\` papkaga qo'ying.
+2. `PosServer.exe` ni ishga tushiring. Windows "Ruxsat berish" (Allow access) so'rasa — **ruxsat bering**.
+3. Oynada **Server manzili** (masalan `http://192.168.1.10:8000`) va **API kalit** chiqadi.
+4. Kompyuterda ham, telefonda ham: **Sozlamalar → Sinxronlash** ga shu manzil va kalitni yozing,
+   **Ulanishni tekshirish** → **Sinxronlashni yoqish** → **Saqlash** (batafsil 6.4).
+5. Oynani yopmang. Baza (`pos.db`) va kalit (`api_kalit.txt`) exe yonida saqlanadi.
+   Kompyuter yoqilganda avtomatik ishga tushishi uchun `PosServer.exe` yorlig'ini
+   `Win+R` → `shell:startup` papkasiga qo'ying.
+
+Telefon va kompyuter **bitta Wi-Fi**'da bo'lishi kerak.
+
+### 6.1. Docker bilan
 
 Docker o'rnating: Windows/macOS uchun **Docker Desktop**, Linux uchun `curl -fsSL https://get.docker.com | sh`.
 
