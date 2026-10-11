@@ -1,0 +1,215 @@
+# POS Terminal — barcha platformalar uchun avtomatik yig'ish (GitHub Actions).
+#
+# Har bir push / pull request: tahlil + testlar + barcha platformalar build.
+# `v1.0.0` kabi teg qo'yilsa — tayyor fayllar GitHub Release sahifasiga yuklanadi:
+#   git tag v1.0.0 && git push origin v1.0.0
+#
+# Android'ni o'z kalitingiz bilan imzolash uchun (ixtiyoriy) repo Secrets'ga qo'shing:
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+# Ular bo'lmasa APK debug kalit bilan imzolanadi (o'rnatish uchun yetarli).
+name: build
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: "3.47.6"
+
+defaults:
+  run:
+    working-directory: app
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: pos
+          POSTGRES_USER: pos
+          POSTGRES_PASSWORD: pos
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U pos" --health-interval 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - name: Server testlari
+        working-directory: server
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+          python -m pytest -q
+      - name: Ikki qurilma sinxronlash testi (PostgreSQL)
+        run: |
+          cd ../server
+          POS_DATABASE_URL=postgresql+psycopg://pos:pos@127.0.0.1:5432/pos POS_API_KEY=ci-key \
+            nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/server.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/api/health && break; sleep 1; done
+          cd ../app
+          SYNC_TEST_URL=http://127.0.0.1:8000 SYNC_TEST_KEY=ci-key flutter test test/sync_integration_test.dart
+
+  android:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Imzo kaliti (agar Secrets berilgan bo'lsa)
+        if: env.KS != ''
+        run: |
+          echo "$KS" | base64 -d > android/app/release.jks
+          cat > android/key.properties <<PROPS
+          storeFile=release.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          PROPS
+      - run: flutter pub get
+      - run: flutter build apk --release
+      - run: flutter build apk --release --split-per-abi
+      - run: flutter build appbundle --release
+      - name: Fayllarni nomlash
+        run: |
+          mkdir -p ../dist
+          cp build/app/outputs/flutter-apk/app-release.apk ../dist/pos-terminal-android-universal.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk ../dist/pos-terminal-android-arm64.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk ../dist/pos-terminal-android-armv7.apk
+          cp build/app/outputs/bundle/release/app-release.aab ../dist/pos-terminal-android.aab
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*
+
+  linux:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+        working-directory: .
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build linux --release
+      - run: |
+          mkdir -p ../dist
+          tar -C build/linux/x64/release -czf ../dist/pos-terminal-linux-x64.tar.gz bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+      - name: Zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ../dist | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath ../dist/pos-terminal-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+
+  macos:
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build macos --release
+      - run: |
+          mkdir -p ../dist
+          ditto -c -k --keepParent "build/macos/Build/Products/Release/POS Terminal.app" ../dist/pos-terminal-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: dist/*
+
+  ios:
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      # Imzosiz build: keyin Xcode/AltStore/Sideloadly orqali o'z Apple ID bilan imzolanadi.
+      - run: flutter build ios --release --no-codesign
+      - run: |
+          mkdir -p ../dist/Payload
+          cp -R build/ios/iphoneos/Runner.app ../dist/Payload/
+          cd ../dist && zip -qr pos-terminal-ios-unsigned.ipa Payload && rm -rf Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: dist/*
+
+  server-image:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Docker image build
+        working-directory: server
+        run: docker build -t pos-terminal-sync:ci .
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [android, linux, windows, macos, ios, server-image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
