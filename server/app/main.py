@@ -6,13 +6,16 @@ Ishga tushirish:
 
 from __future__ import annotations
 
+import re
 import secrets
 from contextlib import asynccontextmanager
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -101,6 +104,53 @@ def devices(session: SessionDep) -> list[dict]:
         }
         for d in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+#  Tovar rasmlari: bazada faqat fayl nomi sinxronlanadi, faylning o'zi shu yerda.
+# ---------------------------------------------------------------------------
+
+_IMAGE_NAME = re.compile(r"^[A-Za-z0-9_-]{1,80}\.(jpg|jpeg|png|webp|gif|bmp|heic)$", re.IGNORECASE)
+MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+
+def _images_dir() -> Path:
+    d = Path(settings.images_dir)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _image_path(name: str) -> Path:
+    if not _IMAGE_NAME.match(name):
+        raise HTTPException(status_code=400, detail="Rasm nomi noto'g'ri")
+    return _images_dir() / name
+
+
+@app.get("/api/images", dependencies=[Depends(require_key)])
+def list_images() -> dict:
+    return {"names": sorted(p.name for p in _images_dir().iterdir() if p.is_file() and _IMAGE_NAME.match(p.name))}
+
+
+@app.put("/api/images/{name}", dependencies=[Depends(require_key)])
+async def upload_image(name: str, request: Request) -> dict:
+    path = _image_path(name)
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="Bo'sh fayl")
+    if len(body) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Rasm juda katta")
+    tmp = path.with_suffix(path.suffix + ".part")
+    tmp.write_bytes(body)
+    tmp.replace(path)
+    return {"name": name, "size": len(body)}
+
+
+@app.get("/api/images/{name}", dependencies=[Depends(require_key)])
+def download_image(name: str) -> FileResponse:
+    path = _image_path(name)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Rasm topilmadi")
+    return FileResponse(path)
 
 
 @app.get("/api/reports/daily", dependencies=[Depends(require_key)])

@@ -4,6 +4,7 @@ import os
 
 os.environ["POS_DATABASE_URL"] = "sqlite:///./test_pos.db"
 os.environ["POS_API_KEY"] = "test-key"
+os.environ["POS_IMAGES_DIR"] = "./test_images"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -103,3 +104,15 @@ def test_daily_report(client):
     push(client, [s])
     r = client.get("/api/reports/daily?date_from=2026-10-01&date_to=2026-10-31", headers=H).json()
     assert r["total"] == 50000 and r["count"] == 1 and r["by_cashier"]["Ali"] == 50000
+
+
+def test_images_roundtrip(client):
+    name = "1b2c3d4e-0000-4000-8000-000000000001.jpg"
+    assert client.put(f"/api/images/{name}", content=b"\xff\xd8jpegdata", headers=H).status_code == 200
+    assert name in client.get("/api/images", headers=H).json()["names"]
+    r = client.get(f"/api/images/{name}", headers=H)
+    assert r.status_code == 200 and r.content == b"\xff\xd8jpegdata"
+    assert client.get("/api/images/yoq.jpg", headers=H).status_code == 404
+    assert client.put("/api/images/..%2Fevil.jpg", content=b"x", headers=H).status_code in (400, 404)
+    assert client.put("/api/images/evil.exe", content=b"x", headers=H).status_code == 400
+    assert client.get("/api/images", headers={"X-API-Key": "notogri"}).status_code == 401

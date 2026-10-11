@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_terminal/core/constants.dart';
 import 'package:pos_terminal/data/database.dart';
 import 'package:pos_terminal/data/repositories/settings_repository.dart';
+import 'package:pos_terminal/services/product_images.dart';
 import 'package:pos_terminal/services/sync/sync_service.dart';
 import 'package:pos_terminal/state/cart.dart';
 import 'package:drift/drift.dart' show Value;
@@ -106,5 +107,31 @@ void main() {
 
     await a.close();
     await b.close();
+  }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
+
+  test('tovar rasmi boshqa qurilmaga ham o\'tadi', () async {
+    final (a, syncA) = await device('K1');
+    final (b, syncB) = await device('T1');
+    final dirA = Directory.systemTemp.createTempSync('imgA');
+    final dirB = Directory.systemTemp.createTempSync('imgB');
+    addTearDown(() {
+      ProductImages.debugDir = null;
+      dirA.deleteSync(recursive: true);
+      dirB.deleteSync(recursive: true);
+    });
+
+    final name = '${DateTime.now().microsecondsSinceEpoch}-rasm.jpg';
+    File('${dirA.path}/$name').writeAsBytesSync([0xFF, 0xD8, 1, 2, 3]);
+    final p = await a.addProduct('Rasmli chelak', price: 50000, stock: 1, barcode: '478${DateTime.now().millisecondsSinceEpoch % 10000000000}');
+    await a.products.save(ProductsCompanion(id: Value(p.id), imagePath: Value(name)));
+
+    ProductImages.debugDir = dirA.path;
+    await syncA.syncNow();
+    expect(syncA.status.value.state, SyncState.ok, reason: syncA.status.value.message);
+
+    ProductImages.debugDir = dirB.path;
+    await syncB.syncNow();
+    expect((await b.products.byId(p.id))!.imagePath, name);
+    expect(File('${dirB.path}/$name').readAsBytesSync(), [0xFF, 0xD8, 1, 2, 3]);
   }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,7 @@ import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/stats_repository.dart';
 import '../../data/repositories/stock_repository.dart';
 import '../alert_service.dart';
+import '../product_images.dart';
 
 enum SyncState { disabled, idle, syncing, ok, offline, error }
 
@@ -141,6 +143,7 @@ class SyncService {
       final client = _Api(baseUrl, apiKey, deviceId);
       final pushed = await _push(client, deviceId);
       final pulled = await _pull(client);
+      await _syncImages(client);
       final now = DateTime.now();
       await settings.set(SettingKeys.syncLastAt, '${now.millisecondsSinceEpoch}');
       status.value = SyncStatus(
@@ -282,6 +285,47 @@ class SyncService {
     return total;
   }
 
+  // --------------------------------------------------------------------------
+  //  RASMLAR
+  // --------------------------------------------------------------------------
+
+  /// Tovar rasmlari: bazada faqat fayl nomi bor, fayllarning o'zi alohida
+  /// almashinadi. Lokalda bor, serverda yo'q — yuklanadi; serverda bor,
+  /// lokalda yo'q — yuklab olinadi. Xato bo'lsa savdo sinxronlashi to'xtamaydi.
+  Future<void> _syncImages(_Api api) async {
+    try {
+      final rows = await db
+          .customSelect("SELECT DISTINCT image_path FROM products WHERE image_path <> ''")
+          .get();
+      final names = rows.map((r) => r.read<String>('image_path')).where((n) => ProductImages.pathFor(n) != null).toSet();
+      if (names.isEmpty) return;
+      final onServer = ((await api.get('/api/images', const {}))['names'] as List? ?? const []).cast<String>().toSet();
+      var downloaded = false;
+      for (final name in names) {
+        final file = File(ProductImages.pathFor(name)!);
+        final local = file.existsSync();
+        try {
+          if (local && !onServer.contains(name)) {
+            await api.putBytes('/api/images/${Uri.encodeComponent(name)}', await file.readAsBytes());
+          } else if (!local && onServer.contains(name)) {
+            final bytes = await api.getBytes('/api/images/${Uri.encodeComponent(name)}');
+            final tmp = File('${file.path}.part');
+            await tmp.writeAsBytes(bytes, flush: true);
+            await tmp.rename(file.path);
+            downloaded = true;
+          }
+        } on SyncException catch (e) {
+          if (e.offline) rethrow;
+          debugPrint('Rasm $name: $e');
+        }
+      }
+      // Rasmlar ko'rinishi uchun tovar ro'yxatlarini yangilaymiz.
+      if (downloaded) db.notifyUpdates({TableUpdate.onTable(db.products)});
+    } catch (e) {
+      debugPrint('Rasmlarni sinxronlab bo\'lmadi: $e');
+    }
+  }
+
   /// Bitta yozuvni lokal bazaga qo'llash. Qaytaradi: o'zgarish kiritildimi.
   Future<bool> _applyRow(String entity, Map<String, Object?> data, {bool force = false}) async {
     final table = _table(entity);
@@ -405,7 +449,24 @@ class _Api {
     return _handle(() => http.post(uri, headers: _headers, body: jsonEncode(body)).timeout(_timeout));
   }
 
+  Future<void> putBytes(String path, List<int> bytes) async {
+    final uri = Uri.parse('$base$path');
+    final headers = {..._headers, 'Content-Type': 'application/octet-stream'};
+    await _send(() => http.put(uri, headers: headers, body: bytes).timeout(const Duration(seconds: 60)));
+  }
+
+  Future<List<int>> getBytes(String path) async {
+    final uri = Uri.parse('$base$path');
+    final r = await _send(() => http.get(uri, headers: _headers).timeout(const Duration(seconds: 60)));
+    return r.bodyBytes;
+  }
+
   Future<Map<String, dynamic>> _handle(Future<http.Response> Function() call) async {
+    final r = await _send(call);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<http.Response> _send(Future<http.Response> Function() call) async {
     http.Response r;
     try {
       r = await call();
@@ -420,6 +481,6 @@ class _Api {
     if (r.statusCode >= 400) {
       throw SyncException('Server xatosi ${r.statusCode}: ${r.body.length > 200 ? r.body.substring(0, 200) : r.body}');
     }
-    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    return r;
   }
 }

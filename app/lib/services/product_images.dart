@@ -29,6 +29,9 @@ class ProductImages {
     }
   }
 
+  @visibleForTesting
+  static set debugDir(String? dir) => _dir = dir;
+
   /// Telefon/planshetda tizim kamerasi, Windows'da web-kamera.
   static bool get cameraSupported => !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isWindows);
 
@@ -40,6 +43,12 @@ class ProductImages {
     if (name.isEmpty || _dir == null) return null;
     final f = File(p.isAbsolute(name) ? name : p.join(_dir!, name));
     return f.existsSync() ? f : null;
+  }
+
+  /// Fayl nomi uchun to'liq yo'l (fayl hali bo'lmasa ham). Papka yo'q bo'lsa — null.
+  static String? pathFor(String name) {
+    if (name.isEmpty || _dir == null || p.isAbsolute(name)) return null;
+    return p.join(_dir!, name);
   }
 
   /// Rasm tanlaydi va nusxasini saqlaydi. Qaytaradi: yangi fayl nomi yoki null (bekor qilindi).
