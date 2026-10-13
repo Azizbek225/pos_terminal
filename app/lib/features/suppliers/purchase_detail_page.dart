@@ -25,11 +25,12 @@ class PurchaseDetailPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final p = ref.watch(_purchaseProvider(purchaseId)).value;
-    if (p == null)
+    if (p == null) {
       return Scaffold(
         appBar: AppBar(),
         body: const Center(child: CircularProgressIndicator()),
       );
+    }
     final items = ref.watch(_itemsProvider(purchaseId)).value ?? const <SupplierPurchaseItem>[];
     final supplier = ref.watch(supplierProvider(p.supplierId)).value;
     final purchases = ref.watch(supplierPurchasesProvider(p.supplierId)).value ?? const <SupplierPurchase>[];
