@@ -369,16 +369,16 @@ class AppDatabase extends _$AppDatabase {
           await _seed();
         },
         onUpgrade: (m, from, to) async {
-          if (from < 2) {
-            // v2: firmalar, kirim hujjatlari va qarzlar.
-            await m.createTable(suppliers);
-            await m.createTable(supplierPurchases);
-            await m.createTable(supplierPurchaseItems);
-            await m.createTable(supplierPayments);
-          } else if (from < 3) {
-            // v3: to'lovda agent ismi va imzosi (v2 da jadval allaqachon bor).
-            await m.addColumn(supplierPayments, supplierPayments.receivedBy);
-            await m.addColumn(supplierPayments, supplierPayments.signaturePath);
+          // Har bir qadam qayta bajarilsa ham xato bermaydi: yangilash avval
+          // yarim yo'lda to'xtagan bo'lsa (ilova yopilgan, xato) — jadval yoki
+          // ustun allaqachon bor bo'lishi mumkin.
+          // v2: firmalar, kirim hujjatlari va qarzlar.
+          for (final t in <TableInfo>[suppliers, supplierPurchases, supplierPurchaseItems, supplierPayments]) {
+            if (!await _tableExists(t.actualTableName)) await m.createTable(t);
+          }
+          // v3: to'lovda agent ismi va imzosi.
+          for (final c in [supplierPayments.receivedBy, supplierPayments.signaturePath]) {
+            if (!await _columnExists('supplier_payments', c.name)) await m.addColumn(supplierPayments, c);
           }
           await _createIndexes();
         },
@@ -388,6 +388,19 @@ class AppDatabase extends _$AppDatabase {
           await customStatement('PRAGMA journal_mode = WAL');
         },
       );
+
+  Future<bool> _tableExists(String name) async {
+    final r = await customSelect(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+      variables: [Variable.withString(name)],
+    ).get();
+    return r.isNotEmpty;
+  }
+
+  Future<bool> _columnExists(String table, String column) async {
+    final r = await customSelect('PRAGMA table_info($table)').get();
+    return r.any((row) => row.read<String>('name') == column);
+  }
 
   /// Qidiruv va hisobotlar tez ishlashi uchun indekslar.
   Future<void> _createIndexes() async {

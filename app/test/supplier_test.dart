@@ -193,6 +193,25 @@ void main() {
     await dir.delete(recursive: true);
   });
 
+  test("yangilash yarim yo'lda qolgan bo'lsa ham baza ochiladi (ustun allaqachon bor)", () async {
+    final dir = await Directory.systemTemp.createTemp('pos_mig3');
+    final file = File('${dir.path}/db.sqlite');
+    final db1 = AppDatabase(NativeDatabase(file));
+    await db1.customSelect('SELECT 1').get();
+    // received_by bor, signature_path yo'q, versiya esa hali 2.
+    await db1.customStatement('ALTER TABLE supplier_payments DROP COLUMN signature_path');
+    await db1.customStatement('PRAGMA user_version = 2');
+    await db1.close();
+
+    final db2 = AppDatabase(NativeDatabase(file));
+    final r = SupplierRepository(db2, () async => 'dev');
+    final id = await r.saveSupplier(name: 'Y');
+    await r.addPayment(supplierId: id, amount: 1, receivedBy: 'A', signaturePath: 'b.png', userId: 'u', userName: 'U');
+    expect((await r.watchPayments(id).first).single.signaturePath, 'b.png');
+    await db2.close();
+    await dir.delete(recursive: true);
+  });
+
   test("eski (v1) baza yangilanganda firma jadvallari yaratiladi", () async {
     final dir = await Directory.systemTemp.createTemp('pos_mig');
     final file = File('${dir.path}/db.sqlite');
