@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_terminal/core/constants.dart';
 import 'package:pos_terminal/data/database.dart';
 import 'package:pos_terminal/data/repositories/settings_repository.dart';
+import 'package:pos_terminal/data/repositories/supplier_repository.dart';
 import 'package:pos_terminal/services/product_images.dart';
 import 'package:pos_terminal/services/sync/sync_service.dart';
 import 'package:pos_terminal/state/cart.dart';
@@ -133,6 +134,50 @@ void main() {
     await syncB.syncNow();
     expect((await b.products.byId(p.id))!.imagePath, name);
     expect(File('${dirB.path}/$name').readAsBytesSync(), [0xFF, 0xD8, 1, 2, 3]);
+  }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
+
+  test("firma, kirim, qarz va prays-list surati boshqa qurilmaga o'tadi", () async {
+    final (a, syncA) = await device('K1');
+    final (b, syncB) = await device('T1');
+    final dirA = Directory.systemTemp.createTempSync('docA');
+    final dirB = Directory.systemTemp.createTempSync('docB');
+    addTearDown(() {
+      ProductImages.debugDir = null;
+      dirA.deleteSync(recursive: true);
+      dirB.deleteSync(recursive: true);
+    });
+    final repoA = SupplierRepository(a.db, () => a.settings.deviceId());
+    final repoB = SupplierRepository(b.db, () => b.settings.deviceId());
+    final admin = await a.users.login('admin', 'admin123');
+    final tag = DateTime.now().microsecondsSinceEpoch;
+    final photo = '$tag-prays.jpg';
+    File('${dirA.path}/$photo').writeAsBytesSync([0xFF, 0xD8, 9, 9]);
+
+    final sid = await repoA.saveSupplier(name: 'Gigiena $tag');
+    final pid = await repoA.createPurchase(
+      supplierId: sid,
+      lines: const [PurchaseLineInput(productId: 'x', productName: 'Sovun', qty: 20, price: 4000)],
+      imagePaths: [photo],
+      paidNow: 30000,
+      userId: admin.id,
+      userName: admin.fullName,
+    );
+    ProductImages.debugDir = dirA.path;
+    await syncA.syncNow();
+    expect(syncA.status.value.state, SyncState.ok, reason: syncA.status.value.message);
+
+    ProductImages.debugDir = dirB.path;
+    await syncB.syncNow();
+    expect(await repoB.balanceOf(sid), 50000);
+    expect(await repoB.watchItems(pid).first, hasLength(1));
+    expect(File('${dirB.path}/$photo').existsSync(), isTrue);
+
+    // B da qarz to'lanadi -> A da ham qarz yopiladi.
+    await repoB.addPayment(supplierId: sid, amount: 50000, userId: admin.id, userName: admin.fullName);
+    await syncB.syncNow();
+    ProductImages.debugDir = dirA.path;
+    await syncA.syncNow();
+    expect(await repoA.balanceOf(sid), 0);
   }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
 
   test('server yangidan o\'rnatilsa (eski kursor) ham hamma narsa olinadi', () async {

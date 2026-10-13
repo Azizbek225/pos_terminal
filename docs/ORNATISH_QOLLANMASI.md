@@ -342,6 +342,19 @@ ilova shu kod bilan yangi tovar kartasini ochishni taklif qiladi.
 
 ---
 
+### 8.5. Firmadan kirim, prays-list va qarzlar
+
+1. **Ombor → Kirim**: "Firma" maydonidan firmani tanlang (yo'q bo'lsa — "Yangi firma"), nakladnoy raqami va sanasini kiriting.
+2. Firma tanlangach **"Prays-listni suratga olish"** tugmasi chiqadi — bir nechta sahifani suratga olish mumkin.
+3. Tovarlarni skanerlang, soni va kirim narxini kiriting → **"Omborga qabul qilish"**.
+4. Oynada **"Hozir to'lanadi"** ga kassada borini yozing — qolgani avtomatik **qarzga** yoziladi.
+
+**Qarzlar** bo'limi (Admin va Omborchi): tepada umumiy qarzdorlik, pastda firmalar (eng ko'p qarz tepada).
+Firmani bossangiz — kirimlar (prays-list suratlari bilan), to'lovlar tarixi va akt-sverka (har qadamdagi qoldiq).
+Kirimni bossangiz — tovarlar, soni, narxi va suratlar. Qarzni istalgan payt qisman yoki to'liq to'lash mumkin;
+to'lovlar eng eski kirimdan boshlab yopadi. Firmalar, kirimlar, to'lovlar va suratlar barcha qurilmalarga sinxronlanadi
+(buning uchun PosServer.exe ham yangi versiyaga almashtirilishi kerak).
+
 ## 9. Birinchi ishga tushirish
 
 1. Ilovani oching. Kirish: **login `admin`, parol `admin123`**.

@@ -52,15 +52,17 @@ class ProductImages {
   }
 
   /// Rasm tanlaydi va nusxasini saqlaydi. Qaytaradi: yangi fayl nomi yoki null (bekor qilindi).
-  static Future<String?> pick(BuildContext context, {required bool camera}) async {
+  /// [maxSize] — prays-list kabi hujjatlar uchun kattaroq (matn o'qilishi uchun).
+  static Future<String?> pick(BuildContext context,
+      {required bool camera, double maxSize = 800, String title = 'Tovarni suratga olish'}) async {
     final XFile? picked;
     if (camera && !_isMobile) {
-      picked = await capturePhotoWithWebcam(context);
+      picked = await capturePhotoWithWebcam(context, title: title);
     } else {
       picked = await ImagePicker().pickImage(
         source: camera ? ImageSource.camera : ImageSource.gallery,
-        maxWidth: 800,
-        maxHeight: 800,
+        maxWidth: maxSize,
+        maxHeight: maxSize,
         imageQuality: 85,
       );
     }

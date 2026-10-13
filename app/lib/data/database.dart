@@ -241,6 +241,78 @@ class AuditLog extends Table with SyncColumns {
   Set<Column> get primaryKey => {id};
 }
 
+/// Yetkazib beruvchi firmalar.
+@DataClassName('Supplier')
+class Suppliers extends Table with SyncColumns {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get phone => text().withDefault(const Constant(''))();
+  TextColumn get contactPerson => text().withDefault(const Constant(''))(); // Agent / vakil
+  TextColumn get address => text().withDefault(const Constant(''))();
+  TextColumn get note => text().withDefault(const Constant(''))();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Firmadan kirim (nakladnoy). `kind`: purchase — tovar kirimi,
+/// opening — boshlang'ich qarz (tovarsiz). Qarz = SUM(total) - SUM(to'lovlar).
+@DataClassName('SupplierPurchase')
+class SupplierPurchases extends Table with SyncColumns {
+  TextColumn get id => text()();
+  TextColumn get supplierId => text()();
+  TextColumn get supplierName => text().withDefault(const Constant(''))(); // nusxa
+  TextColumn get kind => text().withDefault(const Constant('purchase'))();
+  TextColumn get docNo => text().withDefault(const Constant(''))(); // Nakladnoy raqami
+  IntColumn get docDate => integer()(); // Kirim sanasi (ms)
+  IntColumn get total => integer().withDefault(const Constant(0))();
+  RealColumn get itemCount => real().withDefault(const Constant(0))();
+  /// Prays-list / nakladnoy suratlari: vergul bilan ajratilgan fayl nomlari.
+  TextColumn get imagePaths => text().withDefault(const Constant(''))();
+  TextColumn get note => text().withDefault(const Constant(''))();
+  TextColumn get userId => text().withDefault(const Constant(''))();
+  TextColumn get userName => text().withDefault(const Constant(''))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Kirim qatorlari (o'zgarmas). Nom va narx nusxalanadi.
+@DataClassName('SupplierPurchaseItem')
+class SupplierPurchaseItems extends Table with SyncColumns {
+  TextColumn get id => text()();
+  TextColumn get purchaseId => text()();
+  TextColumn get productId => text()();
+  TextColumn get productName => text()();
+  TextColumn get barcode => text().withDefault(const Constant(''))();
+  TextColumn get unit => text().withDefault(const Constant('dona'))();
+  RealColumn get qty => real()();
+  IntColumn get price => integer()(); // Kirim narxi (birlik)
+  IntColumn get lineTotal => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Firmaga to'lovlar (qarzni uzish). `purchaseId` — ixtiyoriy, qaysi kirim
+/// paytida to'langani (ma'lumot uchun; qarz umumiy balansdan hisoblanadi).
+@DataClassName('SupplierPayment')
+class SupplierPayments extends Table with SyncColumns {
+  TextColumn get id => text()();
+  TextColumn get supplierId => text()();
+  TextColumn get purchaseId => text().nullable()();
+  IntColumn get amount => integer()();
+  TextColumn get method => text().withDefault(const Constant('cash'))(); // PaymentType.code
+  IntColumn get paidAt => integer()();
+  TextColumn get note => text().withDefault(const Constant(''))();
+  TextColumn get userId => text().withDefault(const Constant(''))();
+  TextColumn get userName => text().withDefault(const Constant(''))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Kalit-qiymat sozlamalar (lokal).
 @DataClassName('Setting')
 class Settings extends Table {
@@ -262,12 +334,16 @@ class Settings extends Table {
   Alerts,
   AuditLog,
   Settings,
+  Suppliers,
+  SupplierPurchases,
+  SupplierPurchaseItems,
+  SupplierPayments,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   /// Baza fayli ilovaning shaxsiy papkasida saqlanadi (Hujjatlar papkasida emas —
   /// foydalanuvchi tasodifan o'chirib yubormasligi va bulutli sinxronlash
@@ -289,8 +365,14 @@ class AppDatabase extends _$AppDatabase {
           await _seed();
         },
         onUpgrade: (m, from, to) async {
-          // Kelajakdagi sxema o'zgarishlari shu yerga qo'shiladi:
-          // if (from < 2) { await m.addColumn(products, products.newCol); }
+          if (from < 2) {
+            // v2: firmalar, kirim hujjatlari va qarzlar.
+            await m.createTable(suppliers);
+            await m.createTable(supplierPurchases);
+            await m.createTable(supplierPurchaseItems);
+            await m.createTable(supplierPayments);
+          }
+          await _createIndexes();
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
@@ -315,6 +397,10 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS idx_movements_created ON stock_movements(created_at)',
       'CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at)',
       'CREATE INDEX IF NOT EXISTS idx_alerts_dedupe ON alerts(dedupe_key)',
+      'CREATE INDEX IF NOT EXISTS idx_purchases_supplier ON supplier_purchases(supplier_id, doc_date)',
+      'CREATE INDEX IF NOT EXISTS idx_purchase_items_purchase ON supplier_purchase_items(purchase_id)',
+      'CREATE INDEX IF NOT EXISTS idx_purchase_items_product ON supplier_purchase_items(product_id)',
+      'CREATE INDEX IF NOT EXISTS idx_supplier_payments_supplier ON supplier_payments(supplier_id, paid_at)',
     ];
     for (final s in stmts) {
       await customStatement(s);

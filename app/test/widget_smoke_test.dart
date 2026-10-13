@@ -57,7 +57,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final wide = size.width >= 900;
-    final labels = ['Dashboard', 'Ombor', 'Tarix', 'Mavsumiy', 'Alertlar', 'Xodimlar', 'Sozlamalar', 'Savdo'];
+    final labels = ['Dashboard', 'Ombor', 'Tarix', 'Qarzlar', 'Mavsumiy', 'Alertlar', 'Xodimlar', 'Sozlamalar', 'Savdo'];
     for (final l in labels) {
       if (wide) {
         await tester.tap(find.text(l).last);
@@ -74,6 +74,28 @@ void main() {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: 'Sahifa: $l');
+    }
+
+    // Qarzlar -> firma -> kirim (prays-list) sahifalari.
+    if (wide) {
+      await tester.tap(find.text('Qarzlar').last);
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+      await tester.pumpAndSettle();
+      expect(find.text('Umumiy qarzdorlik'), findsOneWidget);
+      await tester.tap(find.text('Gigiena Savdo MChJ'));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+      await tester.pumpAndSettle();
+      expect(find.text("To'lov qilish"), findsOneWidget);
+      for (final tab in ['Akt-sverka', "To'lovlar (3)", 'Kirimlar (3)']) {
+        await tester.tap(find.text(tab));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: tab);
+      }
+      await tester.tap(find.textContaining('№102'));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+      await tester.pumpAndSettle();
+      expect(find.text('Prays-list / nakladnoy suratlari'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     }
 
     await tester.pumpWidget(const SizedBox());

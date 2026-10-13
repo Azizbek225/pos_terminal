@@ -67,6 +67,19 @@ enum MovementType {
       MovementType.values.firstWhere((m) => m.code == code, orElse: () => MovementType.adjustment);
 }
 
+/// Firma bilan hisob-kitob hujjati turi.
+enum PurchaseKind {
+  purchase('purchase', 'Kirim'),
+  opening('opening', "Boshlang'ich qarz");
+
+  const PurchaseKind(this.code, this.label);
+  final String code;
+  final String label;
+
+  static PurchaseKind fromCode(String code) =>
+      PurchaseKind.values.firstWhere((k) => k.code == code, orElse: () => PurchaseKind.purchase);
+}
+
 /// Alert turlari.
 enum AlertType {
   lowStock('low_stock', 'Kam qoldiq'),
@@ -129,6 +142,22 @@ class SyncEntities {
   static const saleItems = 'sale_items';
   static const stockMovements = 'stock_movements';
   static const auditLog = 'audit_log';
+  static const suppliers = 'suppliers';
+  static const supplierPurchases = 'supplier_purchases';
+  static const supplierPurchaseItems = 'supplier_purchase_items';
+  static const supplierPayments = 'supplier_payments';
 
-  static const all = [users, categories, products, sales, saleItems, stockMovements, auditLog];
+  static const all = [
+    users,
+    categories,
+    products,
+    sales,
+    saleItems,
+    stockMovements,
+    auditLog,
+    suppliers,
+    supplierPurchases,
+    supplierPurchaseItems,
+    supplierPayments,
+  ];
 }

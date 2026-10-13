@@ -20,12 +20,16 @@ ENTITIES = (
     "sale_items",
     "stock_movements",
     "audit_log",
+    "suppliers",
+    "supplier_purchases",
+    "supplier_purchase_items",
+    "supplier_payments",
 )
 
 # O'zgarmas yozuvlar: faqat qo'shiladi, hech qachon yangilanmaydi.
 # Qoldiq shu harakatlar yig'indisidan hisoblanadi, shuning uchun parallel
 # sotuvlar bir-birini "bosib" ketmaydi.
-IMMUTABLE = {"sale_items", "stock_movements", "audit_log"}
+IMMUTABLE = {"sale_items", "stock_movements", "audit_log", "supplier_purchase_items"}
 
 
 def server_id(session: Session) -> str:

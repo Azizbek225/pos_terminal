@@ -128,3 +128,22 @@ def test_server_id_stable(client):
     a = client.get("/api/health").json()["server_id"]
     assert a and client.get("/api/health").json()["server_id"] == a
     assert client.get("/api/sync/pull?since=0", headers=H).json()["server_id"] == a
+
+
+def test_supplier_entities_sync(client):
+    rec = lambda e, rid, **d: {"entity": e, "id": rid, "data": {"id": rid, "updated_at": 1000, "device_id": "dev-a", **d}}
+    res = push(client, [
+        rec("suppliers", "s1", name="Gigiena MChJ"),
+        rec("supplier_purchases", "sp1", supplier_id="s1", total=500000),
+        rec("supplier_purchase_items", "spi1", purchase_id="sp1", qty=10, price=50000),
+        rec("supplier_payments", "pay1", supplier_id="s1", amount=200000),
+    ])
+    assert len(res["accepted"]) == 4 and not res["rejected"]
+    # Kirim qatori o'zgarmas: qayta yuborilgan boshqa versiya ham serverdagini o'zgartirmaydi.
+    changed = rec("supplier_purchase_items", "spi1", purchase_id="sp1", qty=99, price=1)
+    changed["data"]["updated_at"] = 2000
+    push(client, [changed])
+    pulled = client.get("/api/sync/pull?since=0", headers=H).json()["changes"]
+    item = next(c for c in pulled if c["id"] == "spi1")
+    assert item["data"]["qty"] == 10
+    assert {c["entity"] for c in pulled} == {"suppliers", "supplier_purchases", "supplier_purchase_items", "supplier_payments"}

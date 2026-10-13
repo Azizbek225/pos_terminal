@@ -6,10 +6,12 @@ import '../../core/constants.dart';
 import '../../core/formatters.dart';
 import '../../data/database.dart';
 import '../../data/repositories/stock_repository.dart';
+import '../../data/repositories/supplier_repository.dart';
 import '../../services/scanner/barcode_listener.dart';
 import '../../state/providers.dart';
 import '../pos/widgets/product_search_field.dart';
 import '../shell/common_widgets.dart';
+import '../suppliers/supplier_widgets.dart';
 import 'product_form_page.dart';
 
 class _ReceiveLine {
@@ -31,8 +33,11 @@ class ReceiveTab extends ConsumerStatefulWidget {
 
 class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAliveClientMixin {
   final _lines = <_ReceiveLine>[];
-  final _supplier = TextEditingController();
+  final _docNo = TextEditingController();
   final _searchFocus = FocusNode();
+  String? _supplierId;
+  DateTime _docDate = DateTime.now();
+  List<String> _photos = [];
   bool _updatePrices = true;
   bool _saving = false;
 
@@ -41,7 +46,7 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
 
   @override
   void dispose() {
-    _supplier.dispose();
+    _docNo.dispose();
     _searchFocus.dispose();
     super.dispose();
   }
@@ -79,12 +84,61 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
     if (created != null) _add(created);
   }
 
+  Future<void> _addPhoto(bool camera) async {
+    final name = await pickDocumentPhoto(context, camera: camera);
+    if (name != null && mounted) setState(() => _photos = [..._photos, name]);
+  }
+
   Future<void> _save() async {
     if (_lines.isEmpty) return;
+    final total = _lines.fold<int>(0, (s, l) => s + (l.qty * l.cost).round());
+    final supplier = _supplierId == null ? null : await ref.read(supplierRepoProvider).byId(_supplierId!);
+    ({int paid, PaymentType method})? pay;
+    if (supplier != null) {
+      final debt = await ref.read(supplierRepoProvider).balanceOf(supplier.id);
+      if (!mounted) return;
+      pay = await showDialog<({int paid, PaymentType method})>(
+        context: context,
+        builder: (_) => _ReceivePaymentDialog(supplierName: supplier.name, total: total, debtBefore: debt),
+      );
+      if (pay == null) return;
+    }
     setState(() => _saving = true);
     try {
       final user = ref.read(authProvider)!;
-      final note = _supplier.text.trim().isEmpty ? 'Kirim' : 'Kirim: ${_supplier.text.trim()}';
+      final doc = _docNo.text.trim();
+      final now = DateTime.now();
+      final docDate = DayRange.startOfDay(_docDate) == DayRange.startOfDay(now)
+          ? now
+          : DateTime(_docDate.year, _docDate.month, _docDate.day, 12);
+      String? purchaseId;
+      if (supplier != null) {
+        purchaseId = await ref.read(supplierRepoProvider).createPurchase(
+              supplierId: supplier.id,
+              lines: [
+                for (final l in _lines)
+                  if (l.qty > 0)
+                    PurchaseLineInput(
+                      productId: l.product.id,
+                      productName: l.product.name,
+                      barcode: l.product.barcode,
+                      unit: l.product.unit,
+                      qty: l.qty,
+                      price: l.cost,
+                    ),
+              ],
+              docNo: doc,
+              docDate: docDate.millisecondsSinceEpoch,
+              imagePaths: _photos,
+              paidNow: pay!.paid,
+              method: pay.method,
+              userId: user.id,
+              userName: user.fullName,
+            );
+      }
+      final note = supplier == null
+          ? (doc.isEmpty ? 'Kirim' : 'Kirim №$doc')
+          : 'Kirim: ${supplier.name}${doc.isEmpty ? '' : ' №$doc'}';
       final touched = await ref
           .read(stockRepoProvider)
           .addMovements(
@@ -97,6 +151,7 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
                     qty: l.qty,
                     unitCost: l.cost,
                     note: note,
+                    refId: purchaseId,
                   ),
             ],
             userId: user.id,
@@ -111,7 +166,7 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
               ProductsCompanion(
                 id: Value(l.product.id),
                 purchasePrice: Value(l.cost),
-                supplier: _supplier.text.trim().isEmpty ? const Value.absent() : Value(_supplier.text.trim()),
+                supplier: supplier == null ? const Value.absent() : Value(supplier.name),
               ),
             );
           }
@@ -121,8 +176,16 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
       ref.read(syncServiceProvider).requestSync();
       if (mounted) {
         final n = _lines.length;
-        setState(_lines.clear);
-        showMessage(context, 'Kirim saqlandi: $n ta tovar');
+        setState(() {
+          _lines.clear();
+          _photos = [];
+          _docNo.clear();
+          _docDate = DateTime.now();
+        });
+        final debtPart = supplier == null || pay == null || pay.paid >= total
+            ? ''
+            : ' · qarzga yozildi: ${Fmt.money(total - pay.paid)}';
+        showMessage(context, 'Kirim saqlandi: $n ta tovar$debtPart');
       }
     } catch (e) {
       if (mounted) showMessage(context, e.toString(), error: true);
@@ -197,11 +260,28 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           SizedBox(
-            width: narrow ? double.infinity : 300,
+            width: narrow ? double.infinity : 320,
+            child: SupplierPickerField(supplierId: _supplierId, onChanged: (v) => setState(() => _supplierId = v)),
+          ),
+          SizedBox(
+            width: narrow ? double.infinity : 180,
             child: TextField(
-              controller: _supplier,
-              decoration: const InputDecoration(labelText: 'Yetkazib beruvchi / hujjat raqami', isDense: true),
+              controller: _docNo,
+              decoration: const InputDecoration(labelText: 'Nakladnoy raqami', isDense: true),
             ),
+          ),
+          ActionChip(
+            avatar: const Icon(Icons.event, size: 18),
+            label: Text('Sana: ${Fmt.date(_docDate)}'),
+            onPressed: () async {
+              final d = await showDatePicker(
+                context: context,
+                initialDate: _docDate,
+                firstDate: DateTime(2020),
+                lastDate: DateTime.now(),
+              );
+              if (d != null) setState(() => _docDate = d);
+            },
           ),
           FilterChip(
             label: const Text('Kirim narxini tovar kartasida yangilash'),
@@ -210,6 +290,15 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
           ),
         ],
       ),
+      if (_supplierId != null) ...[
+        const SizedBox(height: 8),
+        DocumentPhotosStrip(
+          names: _photos,
+          size: 56,
+          onAdd: _addPhoto,
+          onRemove: (n) => setState(() => _photos = _photos.where((x) => x != n).toList()),
+        ),
+      ],
       const SizedBox(height: 8),
     ];
 
@@ -316,6 +405,84 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Kirimni saqlashdan oldin: firmaga hozir qancha to'lanadi, qolgani qarzga.
+class _ReceivePaymentDialog extends StatefulWidget {
+  const _ReceivePaymentDialog({required this.supplierName, required this.total, required this.debtBefore});
+  final String supplierName;
+  final int total;
+  final int debtBefore;
+
+  @override
+  State<_ReceivePaymentDialog> createState() => _ReceivePaymentDialogState();
+}
+
+class _ReceivePaymentDialogState extends State<_ReceivePaymentDialog> {
+  final _paid = TextEditingController();
+  PaymentType _method = PaymentType.cash;
+
+  int get _amount => (Fmt.parseNum(_paid.text) ?? 0).round();
+
+  @override
+  void dispose() {
+    _paid.dispose();
+    super.dispose();
+  }
+
+  void _set(int v) => setState(() => _paid.text = v == 0 ? '' : Fmt.money(v, suffix: false));
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final paid = _amount;
+    final toDebt = widget.total - paid;
+    final after = widget.debtBefore + toDebt;
+    return AlertDialog(
+      title: Text('Kirim: ${widget.supplierName}'),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('Kirim summasi: ${Fmt.money(widget.total)}',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            if (widget.debtBefore != 0) Text('Oldingi holat — ${debtLabel(widget.debtBefore)}'),
+            const SizedBox(height: 12),
+            MoneyField(
+              controller: _paid,
+              label: "Hozir to'lanadi",
+              autofocus: true,
+              helper: "Kassada borini kiriting, qolgani qarzga yoziladi",
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 4, children: [
+              ActionChip(label: const Text("To'liq"), onPressed: () => _set(widget.total)),
+              ActionChip(label: const Text('Hammasi qarzga'), onPressed: () => _set(0)),
+              for (final m in [PaymentType.cash, PaymentType.card, PaymentType.transfer])
+                ChoiceChip(label: Text(m.label), selected: _method == m, onSelected: (_) => setState(() => _method = m)),
+            ]),
+            const SizedBox(height: 12),
+            if (toDebt > 0)
+              Text('Qarzga yoziladi: ${Fmt.money(toDebt)}',
+                  style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.bold)),
+            if (toDebt < 0)
+              Text('Ortiqcha ${Fmt.money(-toDebt)} avans (yoki eski qarzga) hisoblanadi',
+                  style: TextStyle(color: Colors.green.shade700)),
+            Text('Firma bilan yangi holat — ${debtLabel(after)}', style: TextStyle(color: debtColor(context, after))),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Bekor qilish')),
+        FilledButton.icon(
+          onPressed: paid < 0 ? null : () => Navigator.pop(context, (paid: paid, method: _method)),
+          icon: const Icon(Icons.move_to_inbox),
+          label: const Text('Saqlash'),
+        ),
+      ],
     );
   }
 }

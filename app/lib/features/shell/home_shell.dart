@@ -15,6 +15,7 @@ import '../inventory/inventory_page.dart';
 import '../pos/pos_page.dart';
 import '../seasonal/seasonal_page.dart';
 import '../settings/settings_page.dart';
+import '../suppliers/debts_page.dart';
 import '../users/users_page.dart';
 import 'top_panel.dart';
 
@@ -32,6 +33,8 @@ final _destinations = <_Dest>[
   _Dest('Dashboard', Icons.dashboard_outlined, () => const DashboardPage(), {UserRole.admin}),
   _Dest('Ombor', Icons.inventory_2_outlined, () => const InventoryPage(), {UserRole.admin, UserRole.storekeeper}),
   _Dest('Tarix', Icons.receipt_long_outlined, () => const HistoryPage(), {UserRole.admin, UserRole.cashier}),
+  _Dest('Qarzlar', Icons.account_balance_wallet_outlined, () => const DebtsPage(),
+      {UserRole.admin, UserRole.storekeeper}),
   _Dest('Mavsumiy', Icons.eco_outlined, () => const SeasonalPage(), {UserRole.admin, UserRole.storekeeper}),
   _Dest('Alertlar', Icons.notifications_outlined, () => const AlertsPage(),
       {UserRole.admin, UserRole.cashier, UserRole.storekeeper}),

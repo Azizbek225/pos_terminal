@@ -11,6 +11,7 @@ import '../../data/database.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/stats_repository.dart';
 import '../../data/repositories/stock_repository.dart';
+import '../../data/repositories/supplier_repository.dart' show splitImagePaths;
 import '../alert_service.dart';
 import '../product_images.dart';
 
@@ -79,7 +80,12 @@ class SyncService {
   /// bu holatda shovqin bo'ladi (server versiyasi shunchaki qabul qilinadi).
   bool _resync = false;
 
-  static const _immutable = {SyncEntities.saleItems, SyncEntities.stockMovements, SyncEntities.auditLog};
+  static const _immutable = {
+    SyncEntities.saleItems,
+    SyncEntities.stockMovements,
+    SyncEntities.auditLog,
+    SyncEntities.supplierPurchaseItems,
+  };
 
   TableInfo _table(String entity) => switch (entity) {
     SyncEntities.users => db.users,
@@ -89,6 +95,10 @@ class SyncService {
     SyncEntities.saleItems => db.saleItems,
     SyncEntities.stockMovements => db.stockMovements,
     SyncEntities.auditLog => db.auditLog,
+    SyncEntities.suppliers => db.suppliers,
+    SyncEntities.supplierPurchases => db.supplierPurchases,
+    SyncEntities.supplierPurchaseItems => db.supplierPurchaseItems,
+    SyncEntities.supplierPayments => db.supplierPayments,
     _ => throw ArgumentError('Noma\'lum entity: $entity'),
   };
 
@@ -318,15 +328,21 @@ class SyncService {
   //  RASMLAR
   // --------------------------------------------------------------------------
 
-  /// Tovar rasmlari: bazada faqat fayl nomi bor, fayllarning o'zi alohida
-  /// almashinadi. Lokalda bor, serverda yo'q — yuklanadi; serverda bor,
+  /// Tovar rasmlari va firma prays-list suratlari: bazada faqat fayl nomi
+  /// bor, fayllarning o'zi alohida almashinadi. Lokalda bor, serverda yo'q — yuklanadi; serverda bor,
   /// lokalda yo'q — yuklab olinadi. Xato bo'lsa savdo sinxronlashi to'xtamaydi.
   Future<void> _syncImages(_Api api) async {
     try {
       final rows = await db
           .customSelect("SELECT DISTINCT image_path FROM products WHERE image_path <> ''")
           .get();
-      final names = rows.map((r) => r.read<String>('image_path')).where((n) => ProductImages.pathFor(n) != null).toSet();
+      final docs = await db
+          .customSelect("SELECT image_paths FROM supplier_purchases WHERE image_paths <> '' AND is_deleted = 0")
+          .get();
+      final names = <String>{
+        ...rows.map((r) => r.read<String>('image_path')),
+        for (final r in docs) ...splitImagePaths(r.read<String>('image_paths')),
+      }.where((n) => ProductImages.pathFor(n) != null).toSet();
       if (names.isEmpty) return;
       final onServer = ((await api.get('/api/images', const {}))['names'] as List? ?? const []).cast<String>().toSet();
       var downloaded = false;
@@ -349,7 +365,9 @@ class SyncService {
         }
       }
       // Rasmlar ko'rinishi uchun tovar ro'yxatlarini yangilaymiz.
-      if (downloaded) db.notifyUpdates({TableUpdate.onTable(db.products)});
+      if (downloaded) {
+        db.notifyUpdates({TableUpdate.onTable(db.products), TableUpdate.onTable(db.supplierPurchases)});
+      }
     } catch (e) {
       debugPrint('Rasmlarni sinxronlab bo\'lmadi: $e');
     }
