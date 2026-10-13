@@ -14,6 +14,7 @@ import '../../data/repositories/stock_repository.dart';
 import '../../data/repositories/supplier_repository.dart' show splitImagePaths;
 import '../alert_service.dart';
 import '../product_images.dart';
+import 'server_discovery.dart';
 
 enum SyncState { disabled, idle, syncing, ok, offline, error }
 
@@ -63,7 +64,8 @@ class SyncService {
     required this.stock,
     required this.stats,
     required this.alerts,
-  });
+    Future<List<DiscoveredServer>> Function()? discover,
+  }) : discover = discover ?? ServerDiscovery.find;
 
   final AppDatabase db;
   final SettingsRepository settings;
@@ -71,10 +73,14 @@ class SyncService {
   final StatsRepository stats;
   final AlertService alerts;
 
+  /// Tarmoqdan PosServer qidirish (testda almashtiriladi).
+  final Future<List<DiscoveredServer>> Function() discover;
+
   final status = ValueNotifier(const SyncStatus());
   Timer? _timer;
   Timer? _debounce;
   bool _running = false;
+  DateTime? _lastRelocate;
 
   /// Yangi serverga hamma narsa qayta yuborilmoqda: konflikt ogohlantirishlari
   /// bu holatda shovqin bo'ladi (server versiyasi shunchaki qabul qilinadi).
@@ -150,6 +156,7 @@ class SyncService {
       return;
     }
     _running = true;
+    var retry = false;
     status.value = status.value.copyWith(state: SyncState.syncing, message: 'Sinxronlanmoqda...');
     try {
       final apiKey = (await settings.get(SettingKeys.syncApiKey)) ?? '';
@@ -162,6 +169,7 @@ class SyncService {
       final now = DateTime.now();
       await settings.set(SettingKeys.syncLastAt, '${now.millisecondsSinceEpoch}');
       if (serverId != null) await settings.set(SettingKeys.syncServerId, serverId);
+      await _rememberUrl(baseUrl);
       _resync = false;
       status.value = SyncStatus(
         state: SyncState.ok,
@@ -170,11 +178,16 @@ class SyncService {
         pending: await pendingCount(),
       );
     } on SyncException catch (e) {
-      status.value = status.value.copyWith(
-        state: e.offline ? SyncState.offline : SyncState.error,
-        message: e.message,
-        pending: await pendingCount(),
-      );
+      // Server javob bermadi: IP o'zgargan bo'lishi mumkin — boshqa manzilda qidiramiz.
+      if (e.offline && await relocateServer(baseUrl)) {
+        retry = true;
+      } else {
+        status.value = status.value.copyWith(
+          state: e.offline ? SyncState.offline : SyncState.error,
+          message: e.message,
+          pending: await pendingCount(),
+        );
+      }
     } catch (e) {
       debugPrint('Sync xatosi: $e');
       status.value = status.value.copyWith(
@@ -185,6 +198,63 @@ class SyncService {
     } finally {
       _running = false;
     }
+    if (retry) await syncNow();
+  }
+
+  /// Ishlagan manzilni eslab qolamiz (masalan Wi-Fi IP va Tailscale IP):
+  /// biri ishlamasa, boshqasiga o'tiladi.
+  Future<void> _rememberUrl(String url) async {
+    final urls = await _knownUrls();
+    if (urls.isNotEmpty && urls.first == url) return;
+    urls
+      ..remove(url)
+      ..insert(0, url);
+    await settings.set(SettingKeys.syncKnownUrls, urls.take(6).join('\n'));
+  }
+
+  Future<List<String>> _knownUrls() async => ((await settings.get(SettingKeys.syncKnownUrls)) ?? '')
+      .split('\n')
+      .map((u) => u.trim())
+      .where((u) => u.isNotEmpty)
+      .toList();
+
+  /// Server eski manzilda javob bermasa: ilgari ishlagan manzillar va lokal
+  /// tarmoqdan qidiruv. Faqat **o'sha bazali** server (server_id bir xil)
+  /// qabul qilinadi — begona serverga tasodifan ulanib ketilmaydi.
+  /// Topilsa, sozlamalardagi manzil yangilanadi va true qaytadi.
+  @visibleForTesting
+  Future<bool> relocateServer(String failedUrl) async {
+    final now = DateTime.now();
+    if (_lastRelocate != null && now.difference(_lastRelocate!) < const Duration(minutes: 1)) return false;
+    _lastRelocate = now;
+    final knownId = await settings.get(SettingKeys.syncServerId);
+    if (knownId == null || knownId.isEmpty) return false;
+    final apiKey = (await settings.get(SettingKeys.syncApiKey)) ?? '';
+    final deviceId = await settings.deviceId();
+    String norm(String u) => u.endsWith('/') ? u.substring(0, u.length - 1) : u;
+    final tried = {norm(failedUrl)};
+
+    Future<bool> tryUrl(String url) async {
+      if (!tried.add(norm(url))) return false;
+      try {
+        final api = _Api(url, apiKey, deviceId, timeout: const Duration(seconds: 4));
+        final r = await api.get('/api/health', const {});
+        if (r['server_id'] != knownId) return false;
+        await settings.set(SettingKeys.syncUrl, norm(url));
+        debugPrint('Sync: server yangi manzilda topildi: $url');
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    for (final u in await _knownUrls()) {
+      if (await tryUrl(u)) return true;
+    }
+    for (final s in await discover()) {
+      if (await tryUrl(s.url)) return true;
+    }
+    return false;
   }
 
   /// Server bazasi almashganmi (yangi PosServer papkasi, qayta o'rnatish)?
@@ -476,13 +546,13 @@ class SyncService {
 
 /// Oddiy HTTP mijoz (API kalit va qurilma ID sarlavhalari bilan).
 class _Api {
-  _Api(String baseUrl, this.apiKey, this.deviceId)
+  _Api(String baseUrl, this.apiKey, this.deviceId, {this.timeout = const Duration(seconds: 20)})
     : base = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
 
   final String base;
   final String apiKey;
   final String deviceId;
-  static const _timeout = Duration(seconds: 20);
+  final Duration timeout;
 
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
@@ -492,12 +562,12 @@ class _Api {
 
   Future<Map<String, dynamic>> get(String path, Map<String, String> query) async {
     final uri = Uri.parse('$base$path').replace(queryParameters: query.isEmpty ? null : query);
-    return _handle(() => http.get(uri, headers: _headers).timeout(_timeout));
+    return _handle(() => http.get(uri, headers: _headers).timeout(timeout));
   }
 
   Future<Map<String, dynamic>> post(String path, Object body) async {
     final uri = Uri.parse('$base$path');
-    return _handle(() => http.post(uri, headers: _headers, body: jsonEncode(body)).timeout(_timeout));
+    return _handle(() => http.post(uri, headers: _headers, body: jsonEncode(body)).timeout(timeout));
   }
 
   Future<void> putBytes(String path, List<int> bytes) async {

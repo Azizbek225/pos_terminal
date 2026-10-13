@@ -164,9 +164,18 @@ Docker ham, Python ham kerak emas.
 3. Oynada **Server manzili** (masalan `http://192.168.1.10:8000`) va **API kalit** chiqadi.
 4. Kompyuterda ham, telefonda ham: **Sozlamalar → Sinxronlash** ga shu manzil va kalitni yozing,
    **Ulanishni tekshirish** → **Sinxronlashni yoqish** → **Saqlash** (batafsil 6.4).
-5. Oynani yopmang. Baza (`pos.db`) va kalit (`api_kalit.txt`) exe yonida saqlanadi.
-   Kompyuter yoqilganda avtomatik ishga tushishi uchun `PosServer.exe` yorlig'ini
-   `Win+R` → `shell:startup` papkasiga qo'ying.
+5. Oynani yopmang. Baza (`pos.db`), kalit (`api_kalit.txt`) va suratlar (`images`) exe yonida saqlanadi.
+   Ehtiyot nusxa uchun shu uchtasini vaqti-vaqti bilan fleshkaga ko'chirib turing.
+6. **Avtomatik ishga tushish:** PosServer birinchi marta ochilganda o'zini Windows'ga qo'shadi.
+   Keyin kompyuter yonib, Windows'ga kirilganda server o'zi kichraytirilgan oynada ishga tushadi.
+   O'chirish kerak bo'lsa: `PosServer.exe --autostart-off`. Exe'ni boshqa papkaga ko'chirsangiz,
+   yangi joydan bir marta ishga tushiring.
+7. **IP o'zgarsa:** router kompyuterga yangi IP bersa ham hech narsa qilish shart emas — telefon
+   serverni tarmoqdan o'zi qayta topadi (faqat avval shu server bilan bir marta sinxronlangan bo'lsa).
+   Birinchi sozlashda **Server manzili** maydonidagi 📶 (Serverni topish) tugmasini bossangiz,
+   manzil o'zi yoziladi. API kalit o'zgarmaydi (`api_kalit.txt` o'chirilmasa).
+   Tailscale ishlatsangiz, Tailscale IP (100.x.x.x) umuman o'zgarmaydi; dastur Wi-Fi va Tailscale
+   manzillarini eslab qoladi va qaysi biri ishlasa, o'shanga ulanadi.
 
 Telefon va kompyuter **bitta Wi-Fi**'da bo'lishi kerak.
 

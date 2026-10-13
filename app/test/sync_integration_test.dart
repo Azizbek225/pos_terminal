@@ -97,6 +97,8 @@ void main() {
     expect((await b.products.byId(p.id))!.stockQty, 6);
 
     // Server o'chiq bo'lsa ham savdo davom etadi (offline).
+    // Ilgari ishlagan manzillar tozalanadi, aks holda server o'sha yerdan qayta topiladi.
+    await a.settings.set(SettingKeys.syncKnownUrls, '');
     await a.settings.set(SettingKeys.syncUrl, 'http://127.0.0.1:9');
     await syncA.syncNow();
     expect(syncA.status.value.state, SyncState.offline);
