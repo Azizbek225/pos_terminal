@@ -4,14 +4,15 @@ import 'package:flutter/material.dart';
 /// Kompyuter (Windows) web-kamerasi orqali surat olish sahifasi.
 /// Telefonda bu sahifa ishlatilmaydi — u yerda tizim kamerasi ochiladi.
 /// Qaytaradi: olingan surat yoki null (bekor qilindi).
-Future<XFile?> capturePhotoWithWebcam(BuildContext context) {
+Future<XFile?> capturePhotoWithWebcam(BuildContext context, {String title = 'Tovarni suratga olish'}) {
   return Navigator.of(context).push<XFile>(
-    MaterialPageRoute(fullscreenDialog: true, builder: (_) => const _PhotoCapturePage()),
+    MaterialPageRoute(fullscreenDialog: true, builder: (_) => _PhotoCapturePage(title: title)),
   );
 }
 
 class _PhotoCapturePage extends StatefulWidget {
-  const _PhotoCapturePage();
+  const _PhotoCapturePage({required this.title});
+  final String title;
 
   @override
   State<_PhotoCapturePage> createState() => _PhotoCapturePageState();
@@ -93,7 +94,7 @@ class _PhotoCapturePageState extends State<_PhotoCapturePage> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Tovarni suratga olish'),
+        title: Text(widget.title),
         actions: [
           if (_cameras.length > 1)
             IconButton(

@@ -154,7 +154,32 @@ klassik Bluetooth printerlar iOS'da ishlamaydi. Eng ishonchli variant — **Wi-F
 
 Server — kichik FastAPI dastur + PostgreSQL. U faqat qurilmalar orasida o'zgarishlarni almashadi.
 
-### 6.1. Docker bilan (tavsiya etiladi)
+### 6.0. Eng oson yo'l: Windows kompyuterda PosServer.exe
+
+Docker ham, Python ham kerak emas.
+
+1. GitHub → **Actions** → oxirgi yashil build → **Artifacts** bo'limidan `server-windows` ni yuklab oling,
+   ichidagi `PosServer.exe` ni masalan `C:\PosServer\` papkaga qo'ying.
+2. `PosServer.exe` ni ishga tushiring. Windows "Ruxsat berish" (Allow access) so'rasa — **ruxsat bering**.
+3. Oynada **Server manzili** (masalan `http://192.168.1.10:8000`) va **API kalit** chiqadi.
+4. Kompyuterda ham, telefonda ham: **Sozlamalar → Sinxronlash** ga shu manzil va kalitni yozing,
+   **Ulanishni tekshirish** → **Sinxronlashni yoqish** → **Saqlash** (batafsil 6.4).
+5. Oynani yopmang. Baza (`pos.db`), kalit (`api_kalit.txt`) va suratlar (`images`) exe yonida saqlanadi.
+   Ehtiyot nusxa uchun shu uchtasini vaqti-vaqti bilan fleshkaga ko'chirib turing.
+6. **Avtomatik ishga tushish:** PosServer birinchi marta ochilganda o'zini Windows'ga qo'shadi.
+   Keyin kompyuter yonib, Windows'ga kirilganda server o'zi kichraytirilgan oynada ishga tushadi.
+   O'chirish kerak bo'lsa: `PosServer.exe --autostart-off`. Exe'ni boshqa papkaga ko'chirsangiz,
+   yangi joydan bir marta ishga tushiring.
+7. **IP o'zgarsa:** router kompyuterga yangi IP bersa ham hech narsa qilish shart emas — telefon
+   serverni tarmoqdan o'zi qayta topadi (faqat avval shu server bilan bir marta sinxronlangan bo'lsa).
+   Birinchi sozlashda **Server manzili** maydonidagi 📶 (Serverni topish) tugmasini bossangiz,
+   manzil o'zi yoziladi. API kalit o'zgarmaydi (`api_kalit.txt` o'chirilmasa).
+   Tailscale ishlatsangiz, Tailscale IP (100.x.x.x) umuman o'zgarmaydi; dastur Wi-Fi va Tailscale
+   manzillarini eslab qoladi va qaysi biri ishlasa, o'shanga ulanadi.
+
+Telefon va kompyuter **bitta Wi-Fi**'da bo'lishi kerak.
+
+### 6.1. Docker bilan
 
 Docker o'rnating: Windows/macOS uchun **Docker Desktop**, Linux uchun `curl -fsSL https://get.docker.com | sh`.
 
@@ -323,6 +348,28 @@ Code128, QR va boshqa formatlar qo'llanadi.
 **Ombor → Kirim (skaner)** bo'limida tovarlarni ketma-ket skanerlang (har skanerlash +1),
 miqdor va kirim narxini tuzating → **Omborga qabul qilish**. Bazada yo'q shtrix-kod skanerlansa,
 ilova shu kod bilan yangi tovar kartasini ochishni taklif qiladi.
+
+### 8.5. Firmadan kirim, prays-list va qarzlar
+
+1. **Ombor → Kirim**: "Firma" maydonidan firmani tanlang (yo'q bo'lsa — "Yangi firma"), nakladnoy raqami va sanasini kiriting.
+2. Firma tanlangach **"Prays-listni suratga olish"** tugmasi chiqadi — bir nechta sahifani suratga olish mumkin.
+3. Tovarlarni skanerlang, soni va kirim narxini kiriting → **"Omborga qabul qilish"**.
+4. Oynada **"Hozir to'lanadi"** ga kassada borini yozing — qolgani avtomatik **qarzga** yoziladi.
+
+**Qarzlar** bo'limi (Admin va Omborchi): tepada umumiy qarzdorlik, pastda firmalar (eng ko'p qarz tepada).
+Firmani bossangiz — kirimlar (prays-list suratlari bilan), to'lovlar tarixi va akt-sverka (har qadamdagi qoldiq).
+Kirimni bossangiz — tovarlar, soni, narxi va suratlar. Qarzni istalgan payt qisman yoki to'liq to'lash mumkin;
+to'lovlar eng eski kirimdan boshlab yopadi. Firmalar, kirimlar, to'lovlar va suratlar barcha qurilmalarga sinxronlanadi
+(buning uchun PosServer.exe ham yangi versiyaga almashtirilishi kerak).
+
+**Firma sizga qarz bo'lsa.** Prays-list bo'yicha to'lab, tovarning bir qismi kelmasa (yoki tovar firmaga qaytarilsa):
+kirim sahifasida **"Kam keldi / firmaga qaytarish"** — tovar va miqdorni tanlang, tovar ombordan ayriladi va summasi
+qarzdan chegiriladi. Faqat summa bo'yicha — firma sahifasida **"Kam kelgan tovar"**. Qarz minusga o'tsa, firma sizga
+qarz deb ko'rsatiladi (yashil); firma pulni qaytarganda **"Firmadan pul olish"**.
+
+**Agent imzosi.** Har bir to'lovda (va kirim paytidagi to'lovda) agent ismini yozing va **"Imzo qo'ydirish"** tugmasini
+bosing — agent barmog'i bilan telefon ekraniga imzo chekadi. Imzo to'lovlar ro'yxatida ko'rinadi (bosilsa kattalashadi)
+va boshqa qurilmalarga ham o'tadi.
 
 ---
 

@@ -29,6 +29,9 @@ class ProductImages {
     }
   }
 
+  @visibleForTesting
+  static set debugDir(String? dir) => _dir = dir;
+
   /// Telefon/planshetda tizim kamerasi, Windows'da web-kamera.
   static bool get cameraSupported => !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isWindows);
 
@@ -42,16 +45,24 @@ class ProductImages {
     return f.existsSync() ? f : null;
   }
 
+  /// Fayl nomi uchun to'liq yo'l (fayl hali bo'lmasa ham). Papka yo'q bo'lsa — null.
+  static String? pathFor(String name) {
+    if (name.isEmpty || _dir == null || p.isAbsolute(name)) return null;
+    return p.join(_dir!, name);
+  }
+
   /// Rasm tanlaydi va nusxasini saqlaydi. Qaytaradi: yangi fayl nomi yoki null (bekor qilindi).
-  static Future<String?> pick(BuildContext context, {required bool camera}) async {
+  /// [maxSize] — prays-list kabi hujjatlar uchun kattaroq (matn o'qilishi uchun).
+  static Future<String?> pick(BuildContext context,
+      {required bool camera, double maxSize = 800, String title = 'Tovarni suratga olish'}) async {
     final XFile? picked;
     if (camera && !_isMobile) {
-      picked = await capturePhotoWithWebcam(context);
+      picked = await capturePhotoWithWebcam(context, title: title);
     } else {
       picked = await ImagePicker().pickImage(
         source: camera ? ImageSource.camera : ImageSource.gallery,
-        maxWidth: 800,
-        maxHeight: 800,
+        maxWidth: maxSize,
+        maxHeight: maxSize,
         imageQuality: 85,
       );
     }
@@ -62,6 +73,15 @@ class ProductImages {
     if (ext.isEmpty) ext = '.jpg';
     final name = '${const Uuid().v4()}$ext';
     await File(p.join(_dir!, name)).writeAsBytes(await picked.readAsBytes(), flush: true);
+    return name;
+  }
+
+  /// Tayyor baytlarni (masalan, imzo PNG) saqlaydi. Qaytaradi: fayl nomi.
+  static Future<String> saveBytes(List<int> bytes, {String ext = '.png'}) async {
+    if (_dir == null) await init();
+    if (_dir == null) throw Exception('Rasm papkasi mavjud emas');
+    final name = '${const Uuid().v4()}$ext';
+    await File(p.join(_dir!, name)).writeAsBytes(bytes, flush: true);
     return name;
   }
 

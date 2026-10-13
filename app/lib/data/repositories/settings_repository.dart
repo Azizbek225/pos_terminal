@@ -32,6 +32,8 @@ class SettingKeys {
   static const syncEnabled = 'sync.enabled';
   static const syncCursor = 'sync.cursor';
   static const syncLastAt = 'sync.lastAt';
+  static const syncServerId = 'sync.serverId'; // Oxirgi sinxronlangan server bazasi ID si
+  static const syncKnownUrls = 'sync.knownUrls'; // Shu serverga ilgari ishlagan manzillar (har qatorda bitta)
   static const syncIntervalSec = 'sync.intervalSec';
 
   static const themeMode = 'ui.theme'; // system | light | dark

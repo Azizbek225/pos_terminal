@@ -4,6 +4,7 @@ import os
 
 os.environ["POS_DATABASE_URL"] = "sqlite:///./test_pos.db"
 os.environ["POS_API_KEY"] = "test-key"
+os.environ["POS_IMAGES_DIR"] = "./test_images"
 
 import pytest
 from fastapi.testclient import TestClient
@@ -103,3 +104,46 @@ def test_daily_report(client):
     push(client, [s])
     r = client.get("/api/reports/daily?date_from=2026-10-01&date_to=2026-10-31", headers=H).json()
     assert r["total"] == 50000 and r["count"] == 1 and r["by_cashier"]["Ali"] == 50000
+
+
+def test_images_roundtrip(client):
+    name = "1b2c3d4e-0000-4000-8000-000000000001.jpg"
+    assert client.put(f"/api/images/{name}", content=b"\xff\xd8jpegdata", headers=H).status_code == 200
+    assert name in client.get("/api/images", headers=H).json()["names"]
+    r = client.get(f"/api/images/{name}", headers=H)
+    assert r.status_code == 200 and r.content == b"\xff\xd8jpegdata"
+    assert client.get("/api/images/yoq.jpg", headers=H).status_code == 404
+    assert client.put("/api/images/..%2Fevil.jpg", content=b"x", headers=H).status_code in (400, 404)
+    assert client.put("/api/images/evil.exe", content=b"x", headers=H).status_code == 400
+    assert client.get("/api/images", headers={"X-API-Key": "notogri"}).status_code == 401
+
+
+def test_pull_reports_max_seq(client):
+    push(client, [product("p1"), product("p2")])
+    r = client.get("/api/sync/pull?since=0", headers=H).json()
+    assert r["max_seq"] == 2
+
+
+def test_server_id_stable(client):
+    a = client.get("/api/health").json()["server_id"]
+    assert a and client.get("/api/health").json()["server_id"] == a
+    assert client.get("/api/sync/pull?since=0", headers=H).json()["server_id"] == a
+
+
+def test_supplier_entities_sync(client):
+    rec = lambda e, rid, **d: {"entity": e, "id": rid, "data": {"id": rid, "updated_at": 1000, "device_id": "dev-a", **d}}
+    res = push(client, [
+        rec("suppliers", "s1", name="Gigiena MChJ"),
+        rec("supplier_purchases", "sp1", supplier_id="s1", total=500000),
+        rec("supplier_purchase_items", "spi1", purchase_id="sp1", qty=10, price=50000),
+        rec("supplier_payments", "pay1", supplier_id="s1", amount=200000),
+    ])
+    assert len(res["accepted"]) == 4 and not res["rejected"]
+    # Kirim qatori o'zgarmas: qayta yuborilgan boshqa versiya ham serverdagini o'zgartirmaydi.
+    changed = rec("supplier_purchase_items", "spi1", purchase_id="sp1", qty=99, price=1)
+    changed["data"]["updated_at"] = 2000
+    push(client, [changed])
+    pulled = client.get("/api/sync/pull?since=0", headers=H).json()["changes"]
+    item = next(c for c in pulled if c["id"] == "spi1")
+    assert item["data"]["qty"] == 10
+    assert {c["entity"] for c in pulled} == {"suppliers", "supplier_purchases", "supplier_purchase_items", "supplier_payments"}

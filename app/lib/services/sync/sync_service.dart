@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
@@ -10,7 +11,10 @@ import '../../data/database.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../data/repositories/stats_repository.dart';
 import '../../data/repositories/stock_repository.dart';
+import '../../data/repositories/supplier_repository.dart' show splitImagePaths;
 import '../alert_service.dart';
+import '../product_images.dart';
+import 'server_discovery.dart';
 
 enum SyncState { disabled, idle, syncing, ok, offline, error }
 
@@ -60,7 +64,8 @@ class SyncService {
     required this.stock,
     required this.stats,
     required this.alerts,
-  });
+    Future<List<DiscoveredServer>> Function()? discover,
+  }) : discover = discover ?? ServerDiscovery.find;
 
   final AppDatabase db;
   final SettingsRepository settings;
@@ -68,12 +73,25 @@ class SyncService {
   final StatsRepository stats;
   final AlertService alerts;
 
+  /// Tarmoqdan PosServer qidirish (testda almashtiriladi).
+  final Future<List<DiscoveredServer>> Function() discover;
+
   final status = ValueNotifier(const SyncStatus());
   Timer? _timer;
   Timer? _debounce;
   bool _running = false;
+  DateTime? _lastRelocate;
 
-  static const _immutable = {SyncEntities.saleItems, SyncEntities.stockMovements, SyncEntities.auditLog};
+  /// Yangi serverga hamma narsa qayta yuborilmoqda: konflikt ogohlantirishlari
+  /// bu holatda shovqin bo'ladi (server versiyasi shunchaki qabul qilinadi).
+  bool _resync = false;
+
+  static const _immutable = {
+    SyncEntities.saleItems,
+    SyncEntities.stockMovements,
+    SyncEntities.auditLog,
+    SyncEntities.supplierPurchaseItems,
+  };
 
   TableInfo _table(String entity) => switch (entity) {
     SyncEntities.users => db.users,
@@ -83,6 +101,10 @@ class SyncService {
     SyncEntities.saleItems => db.saleItems,
     SyncEntities.stockMovements => db.stockMovements,
     SyncEntities.auditLog => db.auditLog,
+    SyncEntities.suppliers => db.suppliers,
+    SyncEntities.supplierPurchases => db.supplierPurchases,
+    SyncEntities.supplierPurchaseItems => db.supplierPurchaseItems,
+    SyncEntities.supplierPayments => db.supplierPayments,
     _ => throw ArgumentError('Noma\'lum entity: $entity'),
   };
 
@@ -134,15 +156,21 @@ class SyncService {
       return;
     }
     _running = true;
+    var retry = false;
     status.value = status.value.copyWith(state: SyncState.syncing, message: 'Sinxronlanmoqda...');
     try {
       final apiKey = (await settings.get(SettingKeys.syncApiKey)) ?? '';
       final deviceId = await settings.deviceId();
       final client = _Api(baseUrl, apiKey, deviceId);
+      final serverId = await _checkServer(client);
       final pushed = await _push(client, deviceId);
       final pulled = await _pull(client);
+      await _syncImages(client);
       final now = DateTime.now();
       await settings.set(SettingKeys.syncLastAt, '${now.millisecondsSinceEpoch}');
+      if (serverId != null) await settings.set(SettingKeys.syncServerId, serverId);
+      await _rememberUrl(baseUrl);
+      _resync = false;
       status.value = SyncStatus(
         state: SyncState.ok,
         lastSyncAt: now,
@@ -150,11 +178,16 @@ class SyncService {
         pending: await pendingCount(),
       );
     } on SyncException catch (e) {
-      status.value = status.value.copyWith(
-        state: e.offline ? SyncState.offline : SyncState.error,
-        message: e.message,
-        pending: await pendingCount(),
-      );
+      // Server javob bermadi: IP o'zgargan bo'lishi mumkin — boshqa manzilda qidiramiz.
+      if (e.offline && await relocateServer(baseUrl)) {
+        retry = true;
+      } else {
+        status.value = status.value.copyWith(
+          state: e.offline ? SyncState.offline : SyncState.error,
+          message: e.message,
+          pending: await pendingCount(),
+        );
+      }
     } catch (e) {
       debugPrint('Sync xatosi: $e');
       status.value = status.value.copyWith(
@@ -165,6 +198,77 @@ class SyncService {
     } finally {
       _running = false;
     }
+    if (retry) await syncNow();
+  }
+
+  /// Ishlagan manzilni eslab qolamiz (masalan Wi-Fi IP va Tailscale IP):
+  /// biri ishlamasa, boshqasiga o'tiladi.
+  Future<void> _rememberUrl(String url) async {
+    final urls = await _knownUrls();
+    if (urls.isNotEmpty && urls.first == url) return;
+    urls
+      ..remove(url)
+      ..insert(0, url);
+    await settings.set(SettingKeys.syncKnownUrls, urls.take(6).join('\n'));
+  }
+
+  Future<List<String>> _knownUrls() async => ((await settings.get(SettingKeys.syncKnownUrls)) ?? '')
+      .split('\n')
+      .map((u) => u.trim())
+      .where((u) => u.isNotEmpty)
+      .toList();
+
+  /// Server eski manzilda javob bermasa: ilgari ishlagan manzillar va lokal
+  /// tarmoqdan qidiruv. Faqat **o'sha bazali** server (server_id bir xil)
+  /// qabul qilinadi — begona serverga tasodifan ulanib ketilmaydi.
+  /// Topilsa, sozlamalardagi manzil yangilanadi va true qaytadi.
+  @visibleForTesting
+  Future<bool> relocateServer(String failedUrl) async {
+    final now = DateTime.now();
+    if (_lastRelocate != null && now.difference(_lastRelocate!) < const Duration(minutes: 1)) return false;
+    _lastRelocate = now;
+    final knownId = await settings.get(SettingKeys.syncServerId);
+    if (knownId == null || knownId.isEmpty) return false;
+    final apiKey = (await settings.get(SettingKeys.syncApiKey)) ?? '';
+    final deviceId = await settings.deviceId();
+    String norm(String u) => u.endsWith('/') ? u.substring(0, u.length - 1) : u;
+    final tried = {norm(failedUrl)};
+
+    Future<bool> tryUrl(String url) async {
+      if (!tried.add(norm(url))) return false;
+      try {
+        final api = _Api(url, apiKey, deviceId, timeout: const Duration(seconds: 4));
+        final r = await api.get('/api/health', const {});
+        if (r['server_id'] != knownId) return false;
+        await settings.set(SettingKeys.syncUrl, norm(url));
+        debugPrint('Sync: server yangi manzilda topildi: $url');
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    for (final u in await _knownUrls()) {
+      if (await tryUrl(u)) return true;
+    }
+    for (final s in await discover()) {
+      if (await tryUrl(s.url)) return true;
+    }
+    return false;
+  }
+
+  /// Server bazasi almashganmi (yangi PosServer papkasi, qayta o'rnatish)?
+  /// Almashgan bo'lsa — eski serverga yuborilgan yozuvlar yangisida yo'q:
+  /// hammasini qayta yuborish uchun belgilaymiz va noldan yuklaymiz.
+  Future<String?> _checkServer(_Api api) async {
+    final id = (await api.get('/api/health', const {}))['server_id'] as String?;
+    if (id == null || id == await settings.get(SettingKeys.syncServerId)) return id;
+    for (final e in SyncEntities.all) {
+      await db.customUpdate('UPDATE ${_table(e).actualTableName} SET dirty = 1', updates: {_table(e)});
+    }
+    await settings.set(SettingKeys.syncCursor, '0');
+    _resync = true;
+    return id;
   }
 
   // --------------------------------------------------------------------------
@@ -206,7 +310,7 @@ class SyncService {
           final m = c as Map<String, dynamic>;
           final serverData = Map<String, Object?>.from(m['data'] as Map);
           await _applyRow(entity, serverData, force: true);
-          if (!_immutable.contains(entity)) {
+          if (!_immutable.contains(entity) && !_resync) {
             await alerts.system(
               'Sinxronlash konflikti',
               '$entity yozuvi boshqa qurilmada yangiroq o\'zgartirilgan — server versiyasi qabul qilindi.',
@@ -234,6 +338,14 @@ class SyncService {
 
     while (true) {
       final resp = await api.get('/api/sync/pull', {'since': '$cursor', 'limit': '500'});
+      final maxSeq = (resp['max_seq'] as num?)?.toInt();
+      if (maxSeq != null && cursor > maxSeq) {
+        // Server bazasi yangidan boshlangan: eski kursor bilan yangi yozuvlar
+        // o'tkazib yuborilardi. Noldan qayta yuklaymiz.
+        cursor = 0;
+        await settings.set(SettingKeys.syncCursor, '0');
+        continue;
+      }
       final changes = (resp['changes'] as List? ?? const []).cast<Map<String, dynamic>>();
       // Bitta sahifa ichida ham entity tartibini saqlaymiz (FK uchun).
       changes.sort((a, b) {
@@ -280,6 +392,59 @@ class SyncService {
     }
     if (salesChanged) await stats.rebuildSeasonal();
     return total;
+  }
+
+  // --------------------------------------------------------------------------
+  //  RASMLAR
+  // --------------------------------------------------------------------------
+
+  /// Tovar rasmlari va firma prays-list suratlari: bazada faqat fayl nomi
+  /// bor, fayllarning o'zi alohida almashinadi. Lokalda bor, serverda yo'q — yuklanadi; serverda bor,
+  /// lokalda yo'q — yuklab olinadi. Xato bo'lsa savdo sinxronlashi to'xtamaydi.
+  Future<void> _syncImages(_Api api) async {
+    try {
+      final rows = await db
+          .customSelect("SELECT DISTINCT image_path FROM products WHERE image_path <> ''")
+          .get();
+      final docs = await db
+          .customSelect("SELECT image_paths FROM supplier_purchases WHERE image_paths <> '' AND is_deleted = 0")
+          .get();
+      final signs = await db
+          .customSelect("SELECT signature_path FROM supplier_payments WHERE signature_path <> ''")
+          .get();
+      final names = <String>{
+        ...rows.map((r) => r.read<String>('image_path')),
+        ...signs.map((r) => r.read<String>('signature_path')),
+        for (final r in docs) ...splitImagePaths(r.read<String>('image_paths')),
+      }.where((n) => ProductImages.pathFor(n) != null).toSet();
+      if (names.isEmpty) return;
+      final onServer = ((await api.get('/api/images', const {}))['names'] as List? ?? const []).cast<String>().toSet();
+      var downloaded = false;
+      for (final name in names) {
+        final file = File(ProductImages.pathFor(name)!);
+        final local = file.existsSync();
+        try {
+          if (local && !onServer.contains(name)) {
+            await api.putBytes('/api/images/${Uri.encodeComponent(name)}', await file.readAsBytes());
+          } else if (!local && onServer.contains(name)) {
+            final bytes = await api.getBytes('/api/images/${Uri.encodeComponent(name)}');
+            final tmp = File('${file.path}.part');
+            await tmp.writeAsBytes(bytes, flush: true);
+            await tmp.rename(file.path);
+            downloaded = true;
+          }
+        } on SyncException catch (e) {
+          if (e.offline) rethrow;
+          debugPrint('Rasm $name: $e');
+        }
+      }
+      // Rasmlar ko'rinishi uchun tovar ro'yxatlarini yangilaymiz.
+      if (downloaded) {
+        db.notifyUpdates({TableUpdate.onTable(db.products), TableUpdate.onTable(db.supplierPurchases)});
+      }
+    } catch (e) {
+      debugPrint('Rasmlarni sinxronlab bo\'lmadi: $e');
+    }
   }
 
   /// Bitta yozuvni lokal bazaga qo'llash. Qaytaradi: o'zgarish kiritildimi.
@@ -381,13 +546,13 @@ class SyncService {
 
 /// Oddiy HTTP mijoz (API kalit va qurilma ID sarlavhalari bilan).
 class _Api {
-  _Api(String baseUrl, this.apiKey, this.deviceId)
+  _Api(String baseUrl, this.apiKey, this.deviceId, {this.timeout = const Duration(seconds: 20)})
     : base = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
 
   final String base;
   final String apiKey;
   final String deviceId;
-  static const _timeout = Duration(seconds: 20);
+  final Duration timeout;
 
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
@@ -397,15 +562,32 @@ class _Api {
 
   Future<Map<String, dynamic>> get(String path, Map<String, String> query) async {
     final uri = Uri.parse('$base$path').replace(queryParameters: query.isEmpty ? null : query);
-    return _handle(() => http.get(uri, headers: _headers).timeout(_timeout));
+    return _handle(() => http.get(uri, headers: _headers).timeout(timeout));
   }
 
   Future<Map<String, dynamic>> post(String path, Object body) async {
     final uri = Uri.parse('$base$path');
-    return _handle(() => http.post(uri, headers: _headers, body: jsonEncode(body)).timeout(_timeout));
+    return _handle(() => http.post(uri, headers: _headers, body: jsonEncode(body)).timeout(timeout));
+  }
+
+  Future<void> putBytes(String path, List<int> bytes) async {
+    final uri = Uri.parse('$base$path');
+    final headers = {..._headers, 'Content-Type': 'application/octet-stream'};
+    await _send(() => http.put(uri, headers: headers, body: bytes).timeout(const Duration(seconds: 60)));
+  }
+
+  Future<List<int>> getBytes(String path) async {
+    final uri = Uri.parse('$base$path');
+    final r = await _send(() => http.get(uri, headers: _headers).timeout(const Duration(seconds: 60)));
+    return r.bodyBytes;
   }
 
   Future<Map<String, dynamic>> _handle(Future<http.Response> Function() call) async {
+    final r = await _send(call);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<http.Response> _send(Future<http.Response> Function() call) async {
     http.Response r;
     try {
       r = await call();
@@ -420,6 +602,6 @@ class _Api {
     if (r.statusCode >= 400) {
       throw SyncException('Server xatosi ${r.statusCode}: ${r.body.length > 200 ? r.body.substring(0, 200) : r.body}');
     }
-    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    return r;
   }
 }

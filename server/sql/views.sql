@@ -66,3 +66,15 @@ FROM v_sales
 WHERE status = 'completed'
 GROUP BY 1
 ORDER BY 1;
+
+-- Firmalar oldidagi qarz: kirimlar yig'indisi - to'lovlar yig'indisi.
+CREATE OR REPLACE VIEW v_supplier_debts AS
+SELECT
+  s.id,
+  s.data->>'name' AS name,
+  COALESCE((SELECT SUM((p.data->>'total')::bigint) FROM sync_records p
+            WHERE p.entity = 'supplier_purchases' AND NOT p.deleted AND p.data->>'supplier_id' = s.id), 0) AS purchased,
+  COALESCE((SELECT SUM((m.data->>'amount')::bigint) FROM sync_records m
+            WHERE m.entity = 'supplier_payments' AND NOT m.deleted AND m.data->>'supplier_id' = s.id), 0) AS paid
+FROM sync_records s
+WHERE s.entity = 'suppliers' AND NOT s.deleted;

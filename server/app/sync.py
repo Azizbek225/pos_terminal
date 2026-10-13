@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import time
+import uuid
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Device, SyncCounter, SyncRecord
+from .models import Device, ServerInfo, SyncCounter, SyncRecord
 
 # Ilovadagi SyncEntities bilan bir xil bo'lishi shart.
 ENTITIES = (
@@ -19,12 +20,25 @@ ENTITIES = (
     "sale_items",
     "stock_movements",
     "audit_log",
+    "suppliers",
+    "supplier_purchases",
+    "supplier_purchase_items",
+    "supplier_payments",
 )
 
 # O'zgarmas yozuvlar: faqat qo'shiladi, hech qachon yangilanmaydi.
 # Qoldiq shu harakatlar yig'indisidan hisoblanadi, shuning uchun parallel
 # sotuvlar bir-birini "bosib" ketmaydi.
-IMMUTABLE = {"sale_items", "stock_movements", "audit_log"}
+IMMUTABLE = {"sale_items", "stock_movements", "audit_log", "supplier_purchase_items"}
+
+
+def server_id(session: Session) -> str:
+    info = session.get(ServerInfo, 1)
+    if info is None:
+        info = ServerInfo(id=1, server_id=uuid.uuid4().hex)
+        session.add(info)
+        session.commit()
+    return info.server_id
 
 
 def now_ms() -> int:
@@ -142,6 +156,7 @@ def pull(session: Session, device_id: str, since: int, limit: int) -> dict:
     )
     has_more = len(rows) > limit
     rows = rows[:limit]
+    counter = session.get(SyncCounter, 1)
     dev_row = session.get(Device, device_id) or Device(id=device_id, pushed_count=0)
     dev_row.last_pull_at = now_ms()
     session.add(dev_row)
@@ -150,4 +165,8 @@ def pull(session: Session, device_id: str, since: int, limit: int) -> dict:
         "changes": [{"entity": r.entity, "id": r.id, "seq": r.seq, "data": r.data} for r in rows],
         "cursor": rows[-1].seq if rows else since,
         "has_more": has_more,
+        # Mijoz kursori bundan katta bo'lsa — server yangidan o'rnatilgan
+        # (masalan, yangi PosServer.exe papkasi): mijoz noldan qayta yuklaydi.
+        "max_seq": counter.value if counter else 0,
+        "server_id": server_id(session),
     }

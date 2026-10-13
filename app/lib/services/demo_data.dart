@@ -9,6 +9,7 @@ import '../data/database.dart';
 import '../data/repositories/settings_repository.dart';
 import '../data/repositories/stats_repository.dart';
 import '../data/repositories/stock_repository.dart';
+import '../data/repositories/supplier_repository.dart';
 
 /// Tizimni sinab ko'rish uchun namunaviy ma'lumotlar:
 /// xo'jalik mollari, mavsum belgilari va oxirgi ~14 oylik sotuvlar tarixi
@@ -260,7 +261,52 @@ class DemoDataService {
 
     await stock.recompute();
     await stats.rebuildSeasonal();
+    await _demoSuppliers(admin, products, now);
     return products.length;
+  }
+
+  /// Namunaviy firmalar: kirimlar, qisman to'lovlar va qarz.
+  Future<void> _demoSuppliers(User admin, List<Product> products, DateTime now) async {
+    final repo = SupplierRepository(db, settings.deviceId);
+    final existing = {for (final s in await repo.allSuppliers()) s.name};
+    Future<void> firm(String name, String phone, bool Function(Product) filter, List<(int, double)> docs) async {
+      if (existing.contains(name)) return; // demo qayta yuklansa takrorlanmasin
+      final id = await repo.saveSupplier(name: name, phone: phone, note: 'Demo');
+      final goods = products.where(filter).toList();
+      for (final (daysAgo, paidShare) in docs) {
+        final lines = [
+          for (var i = 0; i < goods.length; i++)
+            PurchaseLineInput(
+              productId: goods[i].id,
+              productName: goods[i].name,
+              barcode: goods[i].barcode,
+              unit: goods[i].unit,
+              qty: (10 + (i * 7 + daysAgo) % 30).toDouble(),
+              price: goods[i].purchasePrice,
+            ),
+        ];
+        final total = lines.fold<int>(0, (s, l) => s + l.lineTotal);
+        await repo.createPurchase(
+          supplierId: id,
+          lines: lines,
+          docNo: '${100 + daysAgo}',
+          docDate: now.subtract(Duration(days: daysAgo)).millisecondsSinceEpoch,
+          paidNow: (total * paidShare / 1000).round() * 1000,
+          note: 'Demo',
+          userId: admin.id,
+          userName: admin.fullName,
+        );
+      }
+    }
+
+    final cats = {for (final c in await db.select(db.categories).get()) c.id: c.name};
+    bool inCats(Product p, Set<String> names) => names.contains(cats[p.categoryId]);
+    await firm("Gigiena Savdo MChJ", '+998 90 123 45 67',
+        (p) => inCats(p, {'Hammom va gigiyena', 'Tozalash vositalari'}), [(40, 1), (12, 0.5), (2, 0.3)]);
+    await firm('Artel Distribyutor', '+998 71 200 00 00',
+        (p) => p.brand == 'Artel' || p.brand == 'Midea', [(25, 1), (5, 0.6)]);
+    await firm("Plastmass Zavodi", '+998 93 555 11 22',
+        (p) => inCats(p, {'Plastik buyumlar'}), [(18, 1)]);
   }
 
   static int _check(String twelve) {

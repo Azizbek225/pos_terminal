@@ -7,6 +7,7 @@ import '../../data/repositories/settings_repository.dart';
 import '../../services/demo_data.dart';
 import '../../services/printing/printer_config.dart';
 import '../../services/sync/sync_service.dart';
+import '../../services/sync/server_discovery.dart';
 import '../../core/formatters.dart';
 import '../../state/providers.dart';
 import '../shell/common_widgets.dart';
@@ -479,6 +480,7 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
   late final _key = TextEditingController(text: widget.values[SettingKeys.syncApiKey] ?? '');
   late final _interval = TextEditingController(text: widget.values[SettingKeys.syncIntervalSec] ?? '30');
   late bool _enabled = widget.values[SettingKeys.syncEnabled] == '1';
+  bool _searching = false;
 
   @override
   void dispose() {
@@ -499,6 +501,42 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
     if (mounted) showMessage(context, 'Sinxronlash sozlamalari saqlandi');
   }
 
+  /// Bitta Wi-Fi'dagi PosServer'ni topib, manzilini maydonga yozadi.
+  Future<void> _findServer() async {
+    setState(() => _searching = true);
+    final found = await ServerDiscovery.find();
+    if (!mounted) return;
+    setState(() => _searching = false);
+    if (found.isEmpty) {
+      showMessage(
+        context,
+        "Server topilmadi. Kompyuterda PosServer ishlayotganini va telefon bilan bitta Wi-Fi'da ekanini tekshiring.",
+        error: true,
+      );
+      return;
+    }
+    var pick = found.first;
+    if (found.length > 1) {
+      final chosen = await showDialog<DiscoveredServer>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('Serverni tanlang'),
+          children: [
+            for (final s in found)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, s),
+                child: ListTile(title: Text(s.name.isEmpty ? s.url : s.name), subtitle: Text(s.url)),
+              ),
+          ],
+        ),
+      );
+      if (chosen == null) return;
+      pick = chosen;
+    }
+    setState(() => _url.text = pick.url);
+    if (mounted) showMessage(context, "Server topildi: ${pick.url}. API kalitni yozib, 'Ulanishni tekshirish' ni bosing.");
+  }
+
   @override
   Widget build(BuildContext context) {
     final service = ref.watch(syncServiceProvider);
@@ -510,7 +548,8 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
           const Text(
             "Har bir qurilma (notebook, telefon) o'z lokal bazasi bilan to'liq mustaqil ishlaydi. "
             "Sinxronlash serveri (FastAPI) yoqilsa, internet/tarmoq paydo bo'lganda o'zgarishlar avtomatik almashinadi. "
-            "Notebook o'chiq bo'lsa ham telefon savdo qilishda davom etadi.",
+            "Notebook o'chiq bo'lsa ham telefon savdo qilishda davom etadi. "
+            "Kompyuter IP si o'zgarsa, dastur serverni tarmoqdan o'zi qayta topadi.",
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -526,7 +565,20 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
                 width: 360,
                 child: TextField(
                   controller: _url,
-                  decoration: const InputDecoration(labelText: 'Server manzili', hintText: 'http://192.168.1.10:8000'),
+                  decoration: InputDecoration(
+                    labelText: 'Server manzili',
+                    hintText: 'http://192.168.1.10:8000',
+                    suffixIcon: _searching
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                          )
+                        : IconButton(
+                            tooltip: 'Serverni tarmoqdan topish',
+                            icon: const Icon(Icons.wifi_find),
+                            onPressed: _findServer,
+                          ),
+                  ),
                 ),
               ),
               SizedBox(
@@ -575,7 +627,14 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
                   await _save();
                   try {
                     final msg = await service.testConnection();
-                    if (context.mounted) showMessage(context, msg);
+                    // Ulanish ishlasa — sinxronlashni avtomatik yoqamiz (aks holda
+                    // "Ulandi" chiqadi-yu, ma'lumot almashmaydi).
+                    if (!_enabled) {
+                      setState(() => _enabled = true);
+                      await _save();
+                    }
+                    await service.syncNow();
+                    if (context.mounted) showMessage(context, '$msg. Sinxronlash yoqildi.');
                   } catch (e) {
                     if (context.mounted) showMessage(context, e.toString(), error: true);
                   }
@@ -589,13 +648,28 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
                     "To'liq qayta yuklash",
                     "Serverdagi barcha ma'lumotlar qaytadan yuklab olinadi (yangi qurilma ulanganda foydali).",
                   )) {
+                    if (!_enabled) {
+                      if (context.mounted) showMessage(context, "Avval 'Sinxronlashni yoqish' ni yoqing va saqlang", error: true);
+                      return;
+                    }
                     await service.resetCursor();
                     await service.syncNow();
+                    if (context.mounted) showMessage(context, service.status.value.message);
                   }
                 },
                 child: const Text("Serverdan to'liq yuklash"),
               ),
-              OutlinedButton(onPressed: service.syncNow, child: const Text('Hozir sinxronlash')),
+              OutlinedButton(
+                onPressed: () async {
+                  if (!_enabled) {
+                    showMessage(context, "Avval 'Sinxronlashni yoqish' ni yoqing va saqlang", error: true);
+                    return;
+                  }
+                  await service.syncNow();
+                  if (context.mounted) showMessage(context, service.status.value.message);
+                },
+                child: const Text('Hozir sinxronlash'),
+              ),
               FilledButton(onPressed: _save, child: const Text('Saqlash')),
             ],
           ),

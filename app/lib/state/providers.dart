@@ -11,6 +11,7 @@ import '../data/repositories/sale_repository.dart';
 import '../data/repositories/settings_repository.dart';
 import '../data/repositories/stats_repository.dart';
 import '../data/repositories/stock_repository.dart';
+import '../data/repositories/supplier_repository.dart';
 import '../data/repositories/user_repository.dart';
 import '../services/alert_service.dart';
 import '../services/checkout_service.dart';
@@ -36,6 +37,7 @@ Future<String> Function() _deviceId(Ref ref) => () => ref.read(settingsRepoProvi
 
 final productRepoProvider = Provider((ref) => ProductRepository(ref.watch(databaseProvider), _deviceId(ref)));
 final stockRepoProvider = Provider((ref) => StockRepository(ref.watch(databaseProvider), _deviceId(ref)));
+final supplierRepoProvider = Provider((ref) => SupplierRepository(ref.watch(databaseProvider), _deviceId(ref)));
 final userRepoProvider = Provider((ref) => UserRepository(ref.watch(databaseProvider), _deviceId(ref)));
 final saleRepoProvider = Provider((ref) => SaleRepository(ref.watch(databaseProvider)));
 final statsRepoProvider = Provider((ref) => StatsRepository(ref.watch(databaseProvider)));
@@ -222,3 +224,23 @@ final categoriesProvider =
 final lowStockProvider = StreamProvider<List<Product>>((ref) => ref.watch(productRepoProvider).watchLowStock());
 
 final usersProvider = StreamProvider<List<User>>((ref) => ref.watch(userRepoProvider).watchAll());
+
+// ============================================================================
+//  Firmalar va qarzlar
+// ============================================================================
+
+final suppliersProvider = StreamProvider<List<Supplier>>((ref) => ref.watch(supplierRepoProvider).watchSuppliers());
+
+final supplierBalancesProvider =
+    StreamProvider<List<SupplierBalance>>((ref) => ref.watch(supplierRepoProvider).watchBalances());
+
+final debtSummaryProvider = StreamProvider<DebtSummary>((ref) => ref.watch(supplierRepoProvider).watchSummary());
+
+final supplierProvider =
+    StreamProvider.family<Supplier?, String>((ref, id) => ref.watch(supplierRepoProvider).watchSupplier(id));
+
+final supplierPurchasesProvider = StreamProvider.family<List<SupplierPurchase>, String>(
+    (ref, id) => ref.watch(supplierRepoProvider).watchPurchases(id));
+
+final supplierPaymentsProvider = StreamProvider.family<List<SupplierPayment>, String>(
+    (ref, id) => ref.watch(supplierRepoProvider).watchPayments(id));

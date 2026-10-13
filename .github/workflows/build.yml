@@ -200,9 +200,28 @@ jobs:
         working-directory: server
         run: docker build -t pos-terminal-sync:ci .
 
+  server-windows:
+    needs: test
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller
+      # Bitta fayl: Docker/PostgreSQL'siz, baza exe yonida (pos.db).
+      - run: pyinstaller --onefile --name PosServer --collect-submodules uvicorn --distpath ../dist run_server.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-windows
+          path: dist/PosServer.exe
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [android, linux, windows, macos, ios, server-image]
+    needs: [android, linux, windows, macos, ios, server-image, server-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
