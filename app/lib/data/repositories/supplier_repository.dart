@@ -24,7 +24,8 @@ class SupplierBalance {
   final int? lastPurchaseAt;
   final int purchaseCount;
 
-  /// Musbat — biz firmaga qarzmiz; manfiy — oldindan to'langan (avans).
+  /// Musbat — biz firmaga qarzmiz; manfiy — firma bizga qarz (ortiqcha to'lov,
+  /// kam kelgan yoki qaytarilgan tovar).
   int get debt => purchased - paid;
 }
 
@@ -46,6 +47,9 @@ class PurchaseWithStatus {
   final int covered;
   int get remaining => purchase.total - covered;
   bool get isPaid => remaining <= 0;
+
+  /// Kam kelgan / qaytarilgan tovar hujjati (qarzni kamaytiradi).
+  bool get isCredit => purchase.total < 0;
 }
 
 /// Akt-sverka qatori: kirim yoki to'lov, keyingi qoldiq bilan.
@@ -115,8 +119,7 @@ class SupplierRepository {
     return q.get();
   }
 
-  Future<Supplier?> byId(String id) =>
-      (db.select(db.suppliers)..where((s) => s.id.equals(id))).getSingleOrNull();
+  Future<Supplier?> byId(String id) => (db.select(db.suppliers)..where((s) => s.id.equals(id))).getSingleOrNull();
 
   Stream<Supplier?> watchSupplier(String id) =>
       (db.select(db.suppliers)..where((s) => s.id.equals(id))).watchSingleOrNull();
@@ -132,39 +135,45 @@ class SupplierRepository {
   }) async {
     final n = name.trim();
     if (n.isEmpty) throw Exception('Firma nomini kiriting');
-    final dup = await (db.select(db.suppliers)
-          ..where((s) => s.isDeleted.equals(false) & s.name.lower().equals(n.toLowerCase())))
-        .getSingleOrNull();
+    final dup = await (db.select(
+      db.suppliers,
+    )..where((s) => s.isDeleted.equals(false) & s.name.lower().equals(n.toLowerCase()))).getSingleOrNull();
     if (dup != null && dup.id != id) throw Exception('"$n" nomli firma allaqachon bor');
     final now = Ids.nowMs();
     final dev = await deviceId();
     if (id == null) {
       final newId = Ids.newId();
-      await db.into(db.suppliers).insert(SuppliersCompanion.insert(
-            id: newId,
-            name: n,
-            phone: Value(phone.trim()),
-            contactPerson: Value(contactPerson.trim()),
-            address: Value(address.trim()),
-            note: Value(note.trim()),
-            createdAt: now,
-            updatedAt: now,
-            deviceId: Value(dev),
-          ));
+      await db
+          .into(db.suppliers)
+          .insert(
+            SuppliersCompanion.insert(
+              id: newId,
+              name: n,
+              phone: Value(phone.trim()),
+              contactPerson: Value(contactPerson.trim()),
+              address: Value(address.trim()),
+              note: Value(note.trim()),
+              createdAt: now,
+              updatedAt: now,
+              deviceId: Value(dev),
+            ),
+          );
       return newId;
     }
     final old = await byId(id);
-    await (db.update(db.suppliers)..where((s) => s.id.equals(id))).write(SuppliersCompanion(
-          name: Value(n),
-          phone: Value(phone.trim()),
-          contactPerson: Value(contactPerson.trim()),
-          address: Value(address.trim()),
-          note: Value(note.trim()),
-          updatedAt: Value(now),
-          version: Value((old?.version ?? 0) + 1),
-          deviceId: Value(dev),
-          dirty: const Value(true),
-        ));
+    await (db.update(db.suppliers)..where((s) => s.id.equals(id))).write(
+      SuppliersCompanion(
+        name: Value(n),
+        phone: Value(phone.trim()),
+        contactPerson: Value(contactPerson.trim()),
+        address: Value(address.trim()),
+        note: Value(note.trim()),
+        updatedAt: Value(now),
+        version: Value((old?.version ?? 0) + 1),
+        deviceId: Value(dev),
+        dirty: const Value(true),
+      ),
+    );
     // Nom o'zgarsa — hujjatlardagi nusxani ham yangilaymiz (qidiruv va ro'yxat uchun).
     if (old != null && old.name != n) {
       await db.customUpdate(
@@ -180,12 +189,14 @@ class SupplierRepository {
   Future<void> deleteSupplier(String id) async {
     final b = await balanceOf(id);
     if (b != 0) throw Exception("Firma bilan hisob yopilmagan (qoldiq ${b > 0 ? 'qarz' : 'avans'} bor)");
-    await (db.update(db.suppliers)..where((s) => s.id.equals(id))).write(SuppliersCompanion(
-          isDeleted: const Value(true),
-          updatedAt: Value(Ids.nowMs()),
-          deviceId: Value(await deviceId()),
-          dirty: const Value(true),
-        ));
+    await (db.update(db.suppliers)..where((s) => s.id.equals(id))).write(
+      SuppliersCompanion(
+        isDeleted: const Value(true),
+        updatedAt: Value(Ids.nowMs()),
+        deviceId: Value(await deviceId()),
+        dirty: const Value(true),
+      ),
+    );
   }
 
   // --------------------------------------------------------------------------
@@ -206,30 +217,33 @@ FROM suppliers s WHERE s.is_deleted = 0''';
         .customSelect(_balanceSql, readsFrom: {db.suppliers, db.supplierPurchases, db.supplierPayments})
         .watch()
         .map((rows) {
-      final list = rows
-          .map((r) => SupplierBalance(
-                supplier: db.suppliers.map(r.data),
-                purchased: r.read<int>('purchased'),
-                paid: r.read<int>('paid'),
-                lastPurchaseAt: r.readNullable<int>('last_at'),
-                purchaseCount: r.read<int>('cnt'),
-              ))
-          .toList();
-      list.sort((a, b) {
-        final c = b.debt.compareTo(a.debt);
-        return c != 0 ? c : a.supplier.name.toLowerCase().compareTo(b.supplier.name.toLowerCase());
-      });
-      return list;
-    });
+          final list = rows
+              .map(
+                (r) => SupplierBalance(
+                  supplier: db.suppliers.map(r.data),
+                  purchased: r.read<int>('purchased'),
+                  paid: r.read<int>('paid'),
+                  lastPurchaseAt: r.readNullable<int>('last_at'),
+                  purchaseCount: r.read<int>('cnt'),
+                ),
+              )
+              .toList();
+          list.sort((a, b) {
+            final c = b.debt.compareTo(a.debt);
+            return c != 0 ? c : a.supplier.name.toLowerCase().compareTo(b.supplier.name.toLowerCase());
+          });
+          return list;
+        });
   }
 
   Stream<DebtSummary> watchSummary() {
     final start = DateTime.now();
     final today = DateTime(start.year, start.month, start.day).millisecondsSinceEpoch;
     return watchBalances().asyncMap((list) async {
-      final row = await db
+      final paidToday = await db
           .customSelect(
-            'SELECT COALESCE(SUM(amount), 0) AS s FROM supplier_payments WHERE is_deleted = 0 AND paid_at >= ?',
+            'SELECT COALESCE(SUM(amount), 0) AS s FROM supplier_payments '
+            'WHERE is_deleted = 0 AND amount > 0 AND paid_at >= ?',
             variables: [Variable.withInt(today)],
           )
           .getSingle();
@@ -242,18 +256,20 @@ FROM suppliers s WHERE s.is_deleted = 0''';
           advance -= b.debt;
         }
       }
-      return DebtSummary(totalDebt: debt, debtorCount: n, totalAdvance: advance, paidToday: row.read<int>('s'));
+      return DebtSummary(totalDebt: debt, debtorCount: n, totalAdvance: advance, paidToday: paidToday.read<int>('s'));
     });
   }
 
   /// Bitta firmaning joriy qoldig'i (musbat — qarz).
   Future<int> balanceOf(String supplierId) async {
-    final r = await db.customSelect(
-      'SELECT '
-      '(SELECT COALESCE(SUM(total), 0) FROM supplier_purchases WHERE supplier_id = ? AND is_deleted = 0) - '
-      '(SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE supplier_id = ? AND is_deleted = 0) AS b',
-      variables: [Variable.withString(supplierId), Variable.withString(supplierId)],
-    ).getSingle();
+    final r = await db
+        .customSelect(
+          'SELECT '
+          '(SELECT COALESCE(SUM(total), 0) FROM supplier_purchases WHERE supplier_id = ? AND is_deleted = 0) - '
+          '(SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE supplier_id = ? AND is_deleted = 0) AS b',
+          variables: [Variable.withString(supplierId), Variable.withString(supplierId)],
+        )
+        .getSingle();
     return r.read<int>('b');
   }
 
@@ -290,9 +306,14 @@ FROM suppliers s WHERE s.is_deleted = 0''';
   static List<PurchaseWithStatus> allocate(List<SupplierPurchase> purchases, int totalPaid) {
     final asc = [...purchases]
       ..sort((a, b) => a.docDate != b.docDate ? a.docDate.compareTo(b.docDate) : a.createdAt.compareTo(b.createdAt));
-    var pool = totalPaid;
+    // Kam kelgan / qaytarilgan tovar hujjatlari to'lov kabi qarzni yopadi.
+    var pool = totalPaid + asc.where((p) => p.total < 0).fold<int>(0, (s, p) => s - p.total);
     final covered = <String, int>{};
     for (final p in asc) {
+      if (p.total < 0) {
+        covered[p.id] = p.total;
+        continue;
+      }
       final c = pool <= 0 ? 0 : (pool >= p.total ? p.total : pool);
       covered[p.id] = c;
       pool -= c;
@@ -314,26 +335,33 @@ FROM suppliers s WHERE s.is_deleted = 0''';
       if (o is SupplierPurchase) {
         balance += o.total;
         final kind = PurchaseKind.fromCode(o.kind);
-        out.add(LedgerEntry(
-          at: o.docDate,
-          title: kind == PurchaseKind.opening
-              ? kind.label
-              : 'Kirim${o.docNo.isEmpty ? '' : ' №${o.docNo}'}',
-          debit: o.total,
-          credit: 0,
-          balance: balance,
-          purchase: o,
-        ));
+        out.add(
+          LedgerEntry(
+            at: o.docDate,
+            title: switch (kind) {
+              PurchaseKind.purchase => 'Kirim${o.docNo.isEmpty ? '' : ' №${o.docNo}'}',
+              PurchaseKind.credit => o.note.isEmpty ? kind.label : '${kind.label}: ${o.note}',
+              PurchaseKind.opening => kind.label,
+            },
+            debit: o.total > 0 ? o.total : 0,
+            credit: o.total < 0 ? -o.total : 0,
+            balance: balance,
+            purchase: o,
+          ),
+        );
       } else if (o is SupplierPayment) {
         balance -= o.amount;
-        out.add(LedgerEntry(
-          at: o.paidAt,
-          title: "To'lov (${PaymentType.fromCode(o.method).label})",
-          debit: 0,
-          credit: o.amount,
-          balance: balance,
-          payment: o,
-        ));
+        final method = PaymentType.fromCode(o.method).label;
+        out.add(
+          LedgerEntry(
+            at: o.paidAt,
+            title: o.amount < 0 ? 'Firma pulni qaytardi ($method)' : "To'lov ($method)",
+            debit: o.amount < 0 ? -o.amount : 0,
+            credit: o.amount > 0 ? o.amount : 0,
+            balance: balance,
+            payment: o,
+          ),
+        );
       }
     }
     return out.reversed.toList();
@@ -355,50 +383,60 @@ FROM suppliers s WHERE s.is_deleted = 0''';
     String note = '',
     int paidNow = 0,
     PaymentType method = PaymentType.cash,
+    String receivedBy = '',
+    String signaturePath = '',
     String? id,
   }) async {
     final supplier = await byId(supplierId);
     if (supplier == null) throw Exception('Firma topilmadi');
     final sum = total ?? lines.fold<int>(0, (s, l) => s + l.lineTotal);
-    if (sum < 0) throw Exception("Summa manfiy bo'lishi mumkin emas");
+    if (kind == PurchaseKind.credit ? sum > 0 : sum < 0) throw Exception("Summa ishorasi noto'g'ri");
     if (paidNow < 0) throw Exception("To'lov manfiy bo'lishi mumkin emas");
     final now = Ids.nowMs();
     final dev = await deviceId();
     final pid = id ?? Ids.newId();
     final date = docDate ?? now;
     await db.transaction(() async {
-      await db.into(db.supplierPurchases).insert(SupplierPurchasesCompanion.insert(
-            id: pid,
-            supplierId: supplierId,
-            supplierName: Value(supplier.name),
-            kind: Value(kind.code),
-            docNo: Value(docNo.trim()),
-            docDate: date,
-            total: Value(sum),
-            itemCount: Value(lines.fold<double>(0, (s, l) => s + l.qty)),
-            imagePaths: Value(imagePaths.join(',')),
-            note: Value(note.trim()),
-            userId: Value(userId),
-            userName: Value(userName),
-            createdAt: now,
-            updatedAt: now,
-            deviceId: Value(dev),
-          ));
-      for (final l in lines) {
-        await db.into(db.supplierPurchaseItems).insert(SupplierPurchaseItemsCompanion.insert(
-              id: Ids.newId(),
-              purchaseId: pid,
-              productId: l.productId,
-              productName: l.productName,
-              barcode: Value(l.barcode),
-              unit: Value(l.unit),
-              qty: l.qty,
-              price: l.price,
-              lineTotal: l.lineTotal,
+      await db
+          .into(db.supplierPurchases)
+          .insert(
+            SupplierPurchasesCompanion.insert(
+              id: pid,
+              supplierId: supplierId,
+              supplierName: Value(supplier.name),
+              kind: Value(kind.code),
+              docNo: Value(docNo.trim()),
+              docDate: date,
+              total: Value(sum),
+              itemCount: Value(lines.fold<double>(0, (s, l) => s + l.qty)),
+              imagePaths: Value(imagePaths.join(',')),
+              note: Value(note.trim()),
+              userId: Value(userId),
+              userName: Value(userName),
               createdAt: now,
               updatedAt: now,
               deviceId: Value(dev),
-            ));
+            ),
+          );
+      for (final l in lines) {
+        await db
+            .into(db.supplierPurchaseItems)
+            .insert(
+              SupplierPurchaseItemsCompanion.insert(
+                id: Ids.newId(),
+                purchaseId: pid,
+                productId: l.productId,
+                productName: l.productName,
+                barcode: Value(l.barcode),
+                unit: Value(l.unit),
+                qty: l.qty,
+                price: l.price,
+                lineTotal: l.lineTotal,
+                createdAt: now,
+                updatedAt: now,
+                deviceId: Value(dev),
+              ),
+            );
       }
       if (paidNow > 0) {
         await _insertPayment(
@@ -408,6 +446,8 @@ FROM suppliers s WHERE s.is_deleted = 0''';
           method: method,
           paidAt: date,
           note: kind == PurchaseKind.purchase ? 'Kirim paytida' : '',
+          receivedBy: receivedBy,
+          signaturePath: signaturePath,
           userId: userId,
           userName: userName,
           now: now,
@@ -418,7 +458,8 @@ FROM suppliers s WHERE s.is_deleted = 0''';
     return pid;
   }
 
-  /// Qarzni (to'liq yoki qisman) to'lash.
+  /// Qarzni (to'liq yoki qisman) to'lash. [refund] — aksincha, firma bizga
+  /// pul qaytardi (firma qarzi kamayadi): summa manfiy saqlanadi.
   Future<String> addPayment({
     required String supplierId,
     required int amount,
@@ -428,12 +469,17 @@ FROM suppliers s WHERE s.is_deleted = 0''';
     String? purchaseId,
     int? paidAt,
     String note = '',
+    String receivedBy = '',
+    String signaturePath = '',
+    bool refund = false,
   }) async {
     if (amount <= 0) throw Exception("To'lov summasini kiriting");
     return _insertPayment(
       supplierId: supplierId,
       purchaseId: purchaseId,
-      amount: amount,
+      amount: refund ? -amount : amount,
+      receivedBy: receivedBy,
+      signaturePath: signaturePath,
       method: method,
       paidAt: paidAt ?? Ids.nowMs(),
       note: note,
@@ -455,58 +501,100 @@ FROM suppliers s WHERE s.is_deleted = 0''';
     required String userName,
     required int now,
     required String dev,
+    String receivedBy = '',
+    String signaturePath = '',
   }) async {
     final id = Ids.newId();
-    await db.into(db.supplierPayments).insert(SupplierPaymentsCompanion.insert(
-          id: id,
-          supplierId: supplierId,
-          purchaseId: Value(purchaseId),
-          amount: amount,
-          method: Value(method.code),
-          paidAt: paidAt,
-          note: Value(note.trim()),
-          userId: Value(userId),
-          userName: Value(userName),
-          createdAt: now,
-          updatedAt: now,
-          deviceId: Value(dev),
-        ));
+    await db
+        .into(db.supplierPayments)
+        .insert(
+          SupplierPaymentsCompanion.insert(
+            id: id,
+            supplierId: supplierId,
+            purchaseId: Value(purchaseId),
+            amount: amount,
+            method: Value(method.code),
+            paidAt: paidAt,
+            note: Value(note.trim()),
+            userId: Value(userId),
+            userName: Value(userName),
+            receivedBy: Value(receivedBy.trim()),
+            signaturePath: Value(signaturePath),
+            createdAt: now,
+            updatedAt: now,
+            deviceId: Value(dev),
+          ),
+        );
     return id;
+  }
+
+  /// Kam kelgan / firmaga qaytarilgan tovar: qarzni [amount] ga kamaytiradi.
+  /// [lines] berilsa — qaysi tovar qancha kam kelgani ham saqlanadi
+  /// (ombordan ayirish chaqiruvchi tomonidan). Qaytaradi: hujjat ID si.
+  Future<String> createCredit({
+    required String supplierId,
+    required String userId,
+    required String userName,
+    int? amount,
+    List<PurchaseLineInput> lines = const [],
+    String note = '',
+    String docNo = '',
+    List<String> imagePaths = const [],
+  }) async {
+    final sum = amount ?? lines.fold<int>(0, (s, l) => s + l.lineTotal);
+    if (sum <= 0) throw Exception('Summani kiriting');
+    return createPurchase(
+      supplierId: supplierId,
+      kind: PurchaseKind.credit,
+      lines: lines,
+      total: -sum,
+      note: note,
+      docNo: docNo,
+      imagePaths: imagePaths,
+      userId: userId,
+      userName: userName,
+    );
   }
 
   /// Xato kiritilgan to'lovni bekor qilish.
   Future<void> deletePayment(String id) async {
-    await (db.update(db.supplierPayments)..where((p) => p.id.equals(id))).write(SupplierPaymentsCompanion(
-          isDeleted: const Value(true),
-          updatedAt: Value(Ids.nowMs()),
-          deviceId: Value(await deviceId()),
-          dirty: const Value(true),
-        ));
+    await (db.update(db.supplierPayments)..where((p) => p.id.equals(id))).write(
+      SupplierPaymentsCompanion(
+        isDeleted: const Value(true),
+        updatedAt: Value(Ids.nowMs()),
+        deviceId: Value(await deviceId()),
+        dirty: const Value(true),
+      ),
+    );
   }
 
   /// Kirim hujjatini bekor qilish (yumshoq). Ombordagi tovarlar alohida
   /// qaytariladi (chaqiruvchi tomonidan). Qaytaradi: hujjat qatorlari.
   Future<List<SupplierPurchaseItem>> deletePurchase(String id) async {
     final items = await (db.select(db.supplierPurchaseItems)..where((i) => i.purchaseId.equals(id))).get();
-    await (db.update(db.supplierPurchases)..where((p) => p.id.equals(id))).write(SupplierPurchasesCompanion(
-          isDeleted: const Value(true),
-          updatedAt: Value(Ids.nowMs()),
-          deviceId: Value(await deviceId()),
-          dirty: const Value(true),
-        ));
+    await (db.update(db.supplierPurchases)..where((p) => p.id.equals(id))).write(
+      SupplierPurchasesCompanion(
+        isDeleted: const Value(true),
+        updatedAt: Value(Ids.nowMs()),
+        deviceId: Value(await deviceId()),
+        dirty: const Value(true),
+      ),
+    );
     return items;
   }
 
   /// Prays-list / nakladnoy suratlarini yangilash.
   Future<void> setPurchaseImages(String id, List<String> names) async {
     final old = await (db.select(db.supplierPurchases)..where((p) => p.id.equals(id))).getSingleOrNull();
-    await (db.update(db.supplierPurchases)..where((p) => p.id.equals(id))).write(SupplierPurchasesCompanion(
-          imagePaths: Value(names.join(',')),
-          updatedAt: Value(Ids.nowMs()),
-          version: Value((old?.version ?? 0) + 1),
-          deviceId: Value(await deviceId()),
-          dirty: const Value(true),
-        ));
+    await (db.update(db.supplierPurchases)..where((p) => p.id.equals(id))).write(
+      SupplierPurchasesCompanion(
+        imagePaths: Value(names.join(',')),
+        updatedAt: Value(Ids.nowMs()),
+        version: Value((old?.version ?? 0) + 1),
+        deviceId: Value(await deviceId()),
+        dirty: const Value(true),
+      ),
+    );
   }
 }
 

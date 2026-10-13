@@ -76,6 +76,15 @@ class ProductImages {
     return name;
   }
 
+  /// Tayyor baytlarni (masalan, imzo PNG) saqlaydi. Qaytaradi: fayl nomi.
+  static Future<String> saveBytes(List<int> bytes, {String ext = '.png'}) async {
+    if (_dir == null) await init();
+    if (_dir == null) throw Exception('Rasm papkasi mavjud emas');
+    final name = '${const Uuid().v4()}$ext';
+    await File(p.join(_dir!, name)).writeAsBytes(bytes, flush: true);
+    return name;
+  }
+
   /// Endi ishlatilmaydigan rasm faylini o'chiradi.
   static Future<void> delete(String name) async {
     final f = resolve(name);

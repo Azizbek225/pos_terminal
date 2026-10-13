@@ -10,8 +10,9 @@ import '../../data/database.dart';
 import '../../services/product_images.dart';
 import '../../state/providers.dart';
 import '../shell/common_widgets.dart';
+import 'signature_pad.dart';
 
-/// Qarz summasi rangi: qarz — qizil, avans — yashil, nol — oddiy.
+/// Qarz summasi rangi: biz qarz — qizil, firma bizga qarz — yashil, nol — oddiy.
 Color debtColor(BuildContext context, int debt) {
   final scheme = Theme.of(context).colorScheme;
   if (debt > 0) return scheme.error;
@@ -21,7 +22,7 @@ Color debtColor(BuildContext context, int debt) {
 
 String debtLabel(int debt) {
   if (debt > 0) return 'Qarz: ${Fmt.money(debt)}';
-  if (debt < 0) return 'Avans: ${Fmt.money(-debt)}';
+  if (debt < 0) return 'Firma sizga qarz: ${Fmt.money(-debt)}';
   return "Hisob yopiq";
 }
 
@@ -296,7 +297,91 @@ class _SupplierPickDialogState extends ConsumerState<_SupplierPickDialog> {
 //  To'lov dialogi
 // ---------------------------------------------------------------------------
 
-/// Firmaga to'lov (qarzni uzish). Qaytaradi: to'lov qilindimi.
+/// Pulni olgan agent: ismi va ekranga chizilgan imzosi.
+class SignatureField extends StatelessWidget {
+  const SignatureField({
+    super.key,
+    required this.name,
+    required this.signature,
+    required this.onSigned,
+    this.label = 'Pulni olgan agent',
+    this.subtitle,
+  });
+  final TextEditingController name;
+  final String signature;
+  final ValueChanged<String> onSigned;
+  final String label;
+  final String? subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: name,
+          textCapitalization: TextCapitalization.words,
+          decoration: InputDecoration(labelText: '$label (ismi)', prefixIcon: const Icon(Icons.person_outline)),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            if (signature.isNotEmpty) ...[
+              InkWell(
+                onTap: () => openPhotoViewer(context, [signature]),
+                child: Container(
+                  height: 56,
+                  width: 120,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                  ),
+                  child: SignatureImage(name: signature),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () async {
+                  final n = await openSignaturePad(
+                    context,
+                    title: name.text.trim().isEmpty ? 'Agent imzosi' : '${name.text.trim()} imzosi',
+                    subtitle: subtitle,
+                  );
+                  if (n != null) onSigned(n);
+                },
+                icon: Icon(signature.isEmpty ? Icons.draw_outlined : Icons.edit),
+                label: Text(signature.isEmpty ? "Imzo qo'ydirish" : 'Qayta imzolash'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Saqlangan imzo rasmi (oq fon). Fayl hali bu qurilmada bo'lmasa — belgi.
+class SignatureImage extends StatelessWidget {
+  const SignatureImage({super.key, required this.name, this.height});
+  final String name;
+  final double? height;
+
+  @override
+  Widget build(BuildContext context) {
+    final f = ProductImages.resolve(name);
+    if (f == null) return const Center(child: Icon(Icons.cloud_download_outlined, color: Colors.black38));
+    return Padding(
+      padding: const EdgeInsets.all(4),
+      child: Image.file(f, height: height, fit: BoxFit.contain, key: ValueKey(f.path)),
+    );
+  }
+}
+
+/// Firmaga to'lov (qarzni uzish) yoki firmadan pul qaytishi. Qaytaradi: saqlandimi.
 Future<bool> openPaymentDialog(
   BuildContext context,
   WidgetRef ref, {
@@ -304,48 +389,72 @@ Future<bool> openPaymentDialog(
   required int debt,
   String? purchaseId,
   int? suggested,
+  bool refund = false,
 }) async {
   final r = await showDialog<bool>(
     context: context,
-    builder: (_) => _PaymentDialog(supplier: supplier, debt: debt, purchaseId: purchaseId, suggested: suggested),
+    builder: (_) =>
+        _PaymentDialog(supplier: supplier, debt: debt, purchaseId: purchaseId, suggested: suggested, refund: refund),
   );
   return r ?? false;
 }
 
 class _PaymentDialog extends ConsumerStatefulWidget {
-  const _PaymentDialog({required this.supplier, required this.debt, this.purchaseId, this.suggested});
+  const _PaymentDialog({
+    required this.supplier,
+    required this.debt,
+    this.purchaseId,
+    this.suggested,
+    this.refund = false,
+  });
   final Supplier supplier;
   final int debt;
   final String? purchaseId;
   final int? suggested;
+  final bool refund;
 
   @override
   ConsumerState<_PaymentDialog> createState() => _PaymentDialogState();
 }
 
 class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
-  late final _amount = TextEditingController(
-    text: (widget.suggested ?? (widget.debt > 0 ? widget.debt : 0)) > 0
-        ? Fmt.money(widget.suggested ?? widget.debt, suffix: false)
-        : '',
-  );
+  late bool _refund = widget.refund;
+  late final _amount = TextEditingController(text: _initialAmount());
   final _note = TextEditingController();
+  late final _agent = TextEditingController(text: widget.supplier.contactPerson);
+  String _signature = '';
   PaymentType _method = PaymentType.cash;
   DateTime _date = DateTime.now();
   bool _saving = false;
+
+  String _initialAmount() {
+    final v = widget.suggested ?? (_refund ? -widget.debt : widget.debt);
+    return v > 0 ? Fmt.money(v, suffix: false) : '';
+  }
 
   @override
   void dispose() {
     _amount.dispose();
     _note.dispose();
+    _agent.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
     final amount = _parseMoney(_amount.text) ?? 0;
     if (amount <= 0) {
-      showMessage(context, "To'lov summasini kiriting", error: true);
+      showMessage(context, 'Summani kiriting', error: true);
       return;
+    }
+    if (!_refund && _signature.isEmpty) {
+      final ok = await confirmDialog(
+        context,
+        "Imzosiz to'lov",
+        "Agent imzo qo'ymadi. Imzosiz saqlansinmi?",
+        ok: 'Imzosiz saqlash',
+        cancel: 'Orqaga',
+      );
+      if (!ok || !mounted) return;
     }
     setState(() => _saving = true);
     try {
@@ -359,10 +468,13 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
           .addPayment(
             supplierId: widget.supplier.id,
             amount: amount,
+            refund: _refund,
             method: _method,
             purchaseId: widget.purchaseId,
             paidAt: at.millisecondsSinceEpoch,
             note: _note.text,
+            receivedBy: _agent.text,
+            signaturePath: _signature,
             userId: user.id,
             userName: user.fullName,
           );
@@ -377,13 +489,14 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final cash = ref.watch(todaySummaryProvider).value?.cash;
     final amount = _parseMoney(_amount.text) ?? 0;
-    final after = widget.debt - amount;
+    final after = _refund ? widget.debt + amount : widget.debt - amount;
     return AlertDialog(
-      title: Text("To'lov: ${widget.supplier.name}"),
+      title: Text(widget.supplier.name),
       content: SizedBox(
-        width: 420,
+        width: 440,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -391,20 +504,34 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
             children: [
               Text(
                 debtLabel(widget.debt),
-                style: Theme.of(context).textTheme.titleMedium
-                    ?.copyWith(color: debtColor(context, widget.debt), fontWeight: FontWeight.bold),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: debtColor(context, widget.debt),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, icon: Icon(Icons.north_east), label: Text("Firmaga to'lash")),
+                  ButtonSegment(value: true, icon: Icon(Icons.south_west), label: Text('Firmadan olish')),
+                ],
+                selected: {_refund},
+                onSelectionChanged: (v) => setState(() {
+                  _refund = v.first;
+                  _amount.text = _initialAmount();
+                }),
               ),
               const SizedBox(height: 8),
               MoneyField(
                 controller: _amount,
-                label: "To'lanadigan summa",
+                label: _refund ? 'Firma qaytargan summa' : "To'lanadigan summa",
                 autofocus: true,
                 onChanged: (_) => setState(() {}),
               ),
-              if (cash != null)
+              if (cash != null && !_refund)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text('Bugungi naqd tushum: ${Fmt.money(cash)}', style: Theme.of(context).textTheme.bodySmall),
+                  child: Text('Bugungi naqd tushum: ${Fmt.money(cash)}', style: theme.textTheme.bodySmall),
                 ),
               const SizedBox(height: 8),
               Wrap(
@@ -433,13 +560,20 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
                   if (d != null) setState(() => _date = d);
                 },
               ),
+              SignatureField(
+                name: _agent,
+                signature: _signature,
+                label: _refund ? 'Pulni bergan agent' : 'Pulni olgan agent',
+                subtitle: '${_refund ? 'Qaytarildi' : 'Qabul qilindi'}: ${Fmt.money(amount)}\n${widget.supplier.name}',
+                onSigned: (n) => setState(() => _signature = n),
+              ),
               TextField(
                 controller: _note,
                 decoration: const InputDecoration(labelText: 'Izoh (ixtiyoriy)'),
               ),
               const SizedBox(height: 12),
               Text(
-                'To\'lovdan keyin — ${debtLabel(after)}',
+                'Keyin — ${debtLabel(after)}',
                 style: TextStyle(color: debtColor(context, after), fontWeight: FontWeight.w600),
               ),
             ],
@@ -451,11 +585,82 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
         FilledButton.icon(
           onPressed: _saving ? null : _save,
           icon: const Icon(Icons.payments_outlined),
-          label: const Text("To'lash"),
+          label: Text(_refund ? 'Saqlash' : "To'lash"),
         ),
       ],
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+//  Kam kelgan / qaytarilgan tovar (qarzni kamaytiradi)
+// ---------------------------------------------------------------------------
+
+/// Summa bo'yicha: masalan prays-listdagi tovarlarning bir qismi kelmadi.
+/// Qaytaradi: hujjat yaratildimi.
+Future<bool> openCreditDialog(
+  BuildContext context,
+  WidgetRef ref, {
+  required Supplier supplier,
+  required int debt,
+}) async {
+  final amount = TextEditingController();
+  final note = TextEditingController();
+  final r = await showDialog<bool>(
+    context: context,
+    builder: (c) => StatefulBuilder(
+      builder: (c, setState) {
+        final v = _parseMoney(amount.text) ?? 0;
+        return AlertDialog(
+          title: const Text('Kam kelgan / qaytarilgan tovar'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  "Prays-listdagi tovar kelmagan, kam kelgan yoki firmaga qaytarilgan bo'lsa — shu summa "
+                  "qarzdan ayriladi. Qarz minusga o'tsa, firma sizga qarz bo'ladi.",
+                  style: Theme.of(c).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  debtLabel(debt),
+                  style: TextStyle(color: debtColor(c, debt), fontWeight: FontWeight.bold),
+                ),
+                MoneyField(controller: amount, label: 'Summa', autofocus: true, onChanged: (_) => setState(() {})),
+                TextField(
+                  controller: note,
+                  decoration: const InputDecoration(labelText: 'Sabab (masalan: 5 ta shampun kelmadi)'),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Keyin — ${debtLabel(debt - v)}',
+                  style: TextStyle(color: debtColor(c, debt - v), fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Bekor qilish')),
+            FilledButton(onPressed: v > 0 ? () => Navigator.pop(c, true) : null, child: const Text('Saqlash')),
+          ],
+        );
+      },
+    ),
+  );
+  final value = _parseMoney(amount.text) ?? 0;
+  final reason = note.text;
+  amount.dispose();
+  note.dispose();
+  if (r != true || value <= 0) return false;
+  final user = ref.read(authProvider)!;
+  await ref
+      .read(supplierRepoProvider)
+      .createCredit(supplierId: supplier.id, amount: value, note: reason, userId: user.id, userName: user.fullName);
+  ref.read(syncServiceProvider).requestSync();
+  return true;
 }
 
 // ---------------------------------------------------------------------------

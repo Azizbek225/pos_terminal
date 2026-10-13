@@ -339,8 +339,12 @@ class SyncService {
       final docs = await db
           .customSelect("SELECT image_paths FROM supplier_purchases WHERE image_paths <> '' AND is_deleted = 0")
           .get();
+      final signs = await db
+          .customSelect("SELECT signature_path FROM supplier_payments WHERE signature_path <> ''")
+          .get();
       final names = <String>{
         ...rows.map((r) => r.read<String>('image_path')),
+        ...signs.map((r) => r.read<String>('signature_path')),
         for (final r in docs) ...splitImagePaths(r.read<String>('image_paths')),
       }.where((n) => ProductImages.pathFor(n) != null).toSet();
       if (names.isEmpty) return;

@@ -309,6 +309,10 @@ class SupplierPayments extends Table with SyncColumns {
   TextColumn get userId => text().withDefault(const Constant(''))();
   TextColumn get userName => text().withDefault(const Constant(''))();
 
+  /// Pulni olgan agent ismi va uning ekranga chizilgan imzosi (PNG fayl nomi).
+  TextColumn get receivedBy => text().withDefault(const Constant(''))();
+  TextColumn get signaturePath => text().withDefault(const Constant(''))();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -343,7 +347,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   /// Baza fayli ilovaning shaxsiy papkasida saqlanadi (Hujjatlar papkasida emas —
   /// foydalanuvchi tasodifan o'chirib yubormasligi va bulutli sinxronlash
@@ -371,6 +375,10 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(supplierPurchases);
             await m.createTable(supplierPurchaseItems);
             await m.createTable(supplierPayments);
+          } else if (from < 3) {
+            // v3: to'lovda agent ismi va imzosi (v2 da jadval allaqachon bor).
+            await m.addColumn(supplierPayments, supplierPayments.receivedBy);
+            await m.addColumn(supplierPayments, supplierPayments.signaturePath);
           }
           await _createIndexes();
         },

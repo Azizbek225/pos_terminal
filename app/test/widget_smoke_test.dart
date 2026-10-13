@@ -86,6 +86,12 @@ void main() {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
       await tester.pumpAndSettle();
       expect(find.text("To'lov qilish"), findsOneWidget);
+      await tester.tap(find.text("To'lov qilish"));
+      await tester.pumpAndSettle();
+      expect(find.text("Imzo qo'ydirish"), findsOneWidget);
+      expect(find.text('Firmadan olish'), findsOneWidget);
+      await tester.tap(find.text('Bekor qilish').last);
+      await tester.pumpAndSettle();
       for (final tab in ['Akt-sverka', "To'lovlar (3)", 'Kirimlar (3)']) {
         await tester.tap(find.text(tab));
         await tester.pumpAndSettle();

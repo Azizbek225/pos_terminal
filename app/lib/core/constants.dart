@@ -70,7 +70,11 @@ enum MovementType {
 /// Firma bilan hisob-kitob hujjati turi.
 enum PurchaseKind {
   purchase('purchase', 'Kirim'),
-  opening('opening', "Boshlang'ich qarz");
+  opening('opening', "Boshlang'ich qarz"),
+
+  /// Kam kelgan / firmaga qaytarilgan tovar: `total` manfiy, qarzni kamaytiradi
+  /// (qarz manfiyga o'tsa — firma sizga qarz).
+  credit('credit', 'Kam kelgan / qaytarilgan tovar');
 
   const PurchaseKind(this.code, this.label);
   final String code;

@@ -90,7 +90,7 @@ class SupplierDetailPage extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(debt >= 0 ? 'Qarz' : 'Avans', style: theme.textTheme.labelLarge),
+                Text(debt >= 0 ? 'Sizning qarzingiz' : 'Firma sizga qarz', style: theme.textTheme.labelLarge),
                 Text(
                   Fmt.money(debt.abs()),
                   style: theme.textTheme.headlineMedium?.copyWith(
@@ -99,7 +99,14 @@ class SupplierDetailPage extends ConsumerWidget {
                   ),
                 ),
                 Text(
-                  'Jami kirim: ${Fmt.money(purchased)} · To\'langan: ${Fmt.money(paid)}',
+                  [
+                    'Kirim: ${Fmt.money(purchases.where((p) => p.total > 0).fold<int>(0, (s, p) => s + p.total))}',
+                    if (purchases.any((p) => p.total < 0))
+                      'Kam kelgan: ${Fmt.money(-purchases.where((p) => p.total < 0).fold<int>(0, (s, p) => s + p.total))}',
+                    "To'langan: ${Fmt.money(payments.where((m) => m.amount > 0).fold<int>(0, (s, m) => s + m.amount))}",
+                    if (payments.any((m) => m.amount < 0))
+                      'Qaytarib olingan: ${Fmt.money(-payments.where((m) => m.amount < 0).fold<int>(0, (s, m) => s + m.amount))}',
+                  ].join(' · '),
                   style: theme.textTheme.bodySmall,
                 ),
                 if (supplier.phone.isNotEmpty || supplier.contactPerson.isNotEmpty)
@@ -109,10 +116,21 @@ class SupplierDetailPage extends ConsumerWidget {
                   ),
               ],
             ),
-            FilledButton.icon(
-              onPressed: () => openPaymentDialog(context, ref, supplier: supplier, debt: debt),
-              icon: const Icon(Icons.payments_outlined),
-              label: const Text("To'lov qilish"),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: () => openPaymentDialog(context, ref, supplier: supplier, debt: debt, refund: debt < 0),
+                  icon: const Icon(Icons.payments_outlined),
+                  label: Text(debt < 0 ? 'Firmadan pul olish' : "To'lov qilish"),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => openCreditDialog(context, ref, supplier: supplier, debt: debt),
+                  icon: const Icon(Icons.remove_shopping_cart_outlined),
+                  label: const Text('Kam kelgan tovar'),
+                ),
+              ],
             ),
           ],
         ),
@@ -183,9 +201,12 @@ class _PurchasesTab extends StatelessWidget {
       itemBuilder: (context, i) {
         final r = rows[i];
         final p = r.purchase;
-        final opening = PurchaseKind.fromCode(p.kind) == PurchaseKind.opening;
+        final kind = PurchaseKind.fromCode(p.kind);
+        final opening = kind != PurchaseKind.purchase;
         final photos = splitImagePaths(p.imagePaths);
-        final status = r.isPaid
+        final status = r.isCredit
+            ? (p.note.isEmpty ? 'Qarzdan ayrildi' : p.note, Colors.green.shade700)
+            : r.isPaid
             ? ("To'langan", Colors.green.shade700)
             : r.covered > 0
             ? ('Qisman · qoldi ${Fmt.money(r.remaining)}', Colors.orange.shade800)
@@ -197,23 +218,29 @@ class _PurchasesTab extends StatelessWidget {
                 Navigator.of(context).push(MaterialPageRoute(builder: (_) => PurchaseDetailPage(purchaseId: p.id))),
             leading: photos.isNotEmpty
                 ? ProductThumb(imagePath: photos.first, size: 48, fallback: const Icon(Icons.image_outlined))
-                : Icon(opening ? Icons.history_edu_outlined : Icons.receipt_long_outlined, size: 32),
+                : Icon(switch (kind) {
+                    PurchaseKind.purchase => Icons.receipt_long_outlined,
+                    PurchaseKind.opening => Icons.history_edu_outlined,
+                    PurchaseKind.credit => Icons.remove_shopping_cart_outlined,
+                  }, size: 32),
             title: Text(
-              opening
-                  ? PurchaseKind.opening.label
-                  : '${Fmt.dateMs(p.docDate)}${p.docNo.isEmpty ? '' : ' · №${p.docNo}'}',
+              opening ? kind.label : '${Fmt.dateMs(p.docDate)}${p.docNo.isEmpty ? '' : ' · №${p.docNo}'}',
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             subtitle: Text(
               [
                 if (opening) Fmt.dateMs(p.docDate),
-                if (!opening) '${Fmt.qty(p.itemCount)} dona tovar',
+                if (p.itemCount > 0) '${Fmt.qty(p.itemCount)} dona tovar',
                 if (photos.isNotEmpty) '${photos.length} ta surat',
                 status.$1,
               ].join(' · '),
               style: TextStyle(color: status.$2),
             ),
-            trailing: Text(Fmt.money(p.total), style: Theme.of(context).textTheme.titleMedium),
+            trailing: Text(
+              r.isCredit ? '−${Fmt.money(-p.total)}' : Fmt.money(p.total),
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(color: r.isCredit ? Colors.green.shade700 : null),
+            ),
           ),
         );
       },
@@ -241,11 +268,26 @@ class _PaymentsTab extends ConsumerWidget {
         return Card(
           margin: EdgeInsets.zero,
           child: ListTile(
-            leading: const Icon(Icons.payments_outlined),
-            title: Text(Fmt.money(m.amount), style: const TextStyle(fontWeight: FontWeight.w600)),
+            leading: m.signaturePath.isNotEmpty
+                ? InkWell(
+                    onTap: () => openPhotoViewer(context, [m.signaturePath]),
+                    child: Container(
+                      width: 72,
+                      height: 44,
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(6)),
+                      child: SignatureImage(name: m.signaturePath),
+                    ),
+                  )
+                : Icon(m.amount < 0 ? Icons.south_west : Icons.payments_outlined),
+            title: Text(
+              m.amount < 0 ? 'Firma qaytardi: ${Fmt.money(-m.amount)}' : Fmt.money(m.amount),
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
             subtitle: Text(
               [
                 Fmt.dateTimeMs(m.paidAt),
+                if (m.receivedBy.isNotEmpty) '${m.amount < 0 ? 'bergan' : 'oldi'}: ${m.receivedBy}',
+                if (m.signaturePath.isEmpty && m.amount > 0) 'imzosiz',
                 PaymentType.fromCode(m.method).label,
                 if (doc != null) 'kirim ${Fmt.dateMs(doc.docDate)}${doc.docNo.isEmpty ? '' : ' №${doc.docNo}'}',
                 if (m.note.isNotEmpty) m.note,
@@ -260,7 +302,7 @@ class _PaymentsTab extends ConsumerWidget {
                       final ok = await confirmDialog(
                         context,
                         "To'lovni bekor qilish",
-                        "${Fmt.money(m.amount)} to'lov o'chirilsinmi? Qarz shuncha oshadi.",
+                        "${Fmt.money(m.amount.abs())} yozuvi o'chirilsinmi?",
                         ok: "O'chirish",
                         danger: true,
                       );

@@ -62,7 +62,7 @@ class _DebtsPageState extends ConsumerState<DebtsPage> {
       ),
       if (summary.totalAdvance > 0)
         StatTile(
-          label: 'Avans (oldindan to\'langan)',
+          label: 'Firmalar sizga qarz',
           value: Fmt.money(summary.totalAdvance),
           icon: Icons.savings_outlined,
           compact: narrow,
@@ -171,7 +171,10 @@ class _SupplierTile extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            Text(balance.debt > 0 ? 'qarz' : (balance.debt < 0 ? 'avans' : 'yopiq'), style: theme.textTheme.bodySmall),
+            Text(
+              balance.debt > 0 ? 'qarz' : (balance.debt < 0 ? 'sizga qarz' : 'yopiq'),
+              style: theme.textTheme.bodySmall,
+            ),
           ],
         ),
       ),

@@ -11309,6 +11309,30 @@ class $SupplierPaymentsTable extends SupplierPayments
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _receivedByMeta = const VerificationMeta(
+    'receivedBy',
+  );
+  @override
+  late final GeneratedColumn<String> receivedBy = GeneratedColumn<String>(
+    'received_by',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _signaturePathMeta = const VerificationMeta(
+    'signaturePath',
+  );
+  @override
+  late final GeneratedColumn<String> signaturePath = GeneratedColumn<String>(
+    'signature_path',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     createdAt,
@@ -11326,6 +11350,8 @@ class $SupplierPaymentsTable extends SupplierPayments
     note,
     userId,
     userName,
+    receivedBy,
+    signaturePath,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -11438,6 +11464,21 @@ class $SupplierPaymentsTable extends SupplierPayments
         userName.isAcceptableOrUnknown(data['user_name']!, _userNameMeta),
       );
     }
+    if (data.containsKey('received_by')) {
+      context.handle(
+        _receivedByMeta,
+        receivedBy.isAcceptableOrUnknown(data['received_by']!, _receivedByMeta),
+      );
+    }
+    if (data.containsKey('signature_path')) {
+      context.handle(
+        _signaturePathMeta,
+        signaturePath.isAcceptableOrUnknown(
+          data['signature_path']!,
+          _signaturePathMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -11507,6 +11548,14 @@ class $SupplierPaymentsTable extends SupplierPayments
         DriftSqlType.string,
         data['${effectivePrefix}user_name'],
       )!,
+      receivedBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}received_by'],
+      )!,
+      signaturePath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}signature_path'],
+      )!,
     );
   }
 
@@ -11532,6 +11581,10 @@ class SupplierPayment extends DataClass implements Insertable<SupplierPayment> {
   final String note;
   final String userId;
   final String userName;
+
+  /// Pulni olgan agent ismi va uning ekranga chizilgan imzosi (PNG fayl nomi).
+  final String receivedBy;
+  final String signaturePath;
   const SupplierPayment({
     required this.createdAt,
     required this.updatedAt,
@@ -11548,6 +11601,8 @@ class SupplierPayment extends DataClass implements Insertable<SupplierPayment> {
     required this.note,
     required this.userId,
     required this.userName,
+    required this.receivedBy,
+    required this.signaturePath,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -11569,6 +11624,8 @@ class SupplierPayment extends DataClass implements Insertable<SupplierPayment> {
     map['note'] = Variable<String>(note);
     map['user_id'] = Variable<String>(userId);
     map['user_name'] = Variable<String>(userName);
+    map['received_by'] = Variable<String>(receivedBy);
+    map['signature_path'] = Variable<String>(signaturePath);
     return map;
   }
 
@@ -11591,6 +11648,8 @@ class SupplierPayment extends DataClass implements Insertable<SupplierPayment> {
       note: Value(note),
       userId: Value(userId),
       userName: Value(userName),
+      receivedBy: Value(receivedBy),
+      signaturePath: Value(signaturePath),
     );
   }
 
@@ -11615,6 +11674,8 @@ class SupplierPayment extends DataClass implements Insertable<SupplierPayment> {
       note: serializer.fromJson<String>(json['note']),
       userId: serializer.fromJson<String>(json['userId']),
       userName: serializer.fromJson<String>(json['userName']),
+      receivedBy: serializer.fromJson<String>(json['receivedBy']),
+      signaturePath: serializer.fromJson<String>(json['signaturePath']),
     );
   }
   @override
@@ -11636,6 +11697,8 @@ class SupplierPayment extends DataClass implements Insertable<SupplierPayment> {
       'note': serializer.toJson<String>(note),
       'userId': serializer.toJson<String>(userId),
       'userName': serializer.toJson<String>(userName),
+      'receivedBy': serializer.toJson<String>(receivedBy),
+      'signaturePath': serializer.toJson<String>(signaturePath),
     };
   }
 
@@ -11655,6 +11718,8 @@ class SupplierPayment extends DataClass implements Insertable<SupplierPayment> {
     String? note,
     String? userId,
     String? userName,
+    String? receivedBy,
+    String? signaturePath,
   }) => SupplierPayment(
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -11671,6 +11736,8 @@ class SupplierPayment extends DataClass implements Insertable<SupplierPayment> {
     note: note ?? this.note,
     userId: userId ?? this.userId,
     userName: userName ?? this.userName,
+    receivedBy: receivedBy ?? this.receivedBy,
+    signaturePath: signaturePath ?? this.signaturePath,
   );
   SupplierPayment copyWithCompanion(SupplierPaymentsCompanion data) {
     return SupplierPayment(
@@ -11693,6 +11760,12 @@ class SupplierPayment extends DataClass implements Insertable<SupplierPayment> {
       note: data.note.present ? data.note.value : this.note,
       userId: data.userId.present ? data.userId.value : this.userId,
       userName: data.userName.present ? data.userName.value : this.userName,
+      receivedBy: data.receivedBy.present
+          ? data.receivedBy.value
+          : this.receivedBy,
+      signaturePath: data.signaturePath.present
+          ? data.signaturePath.value
+          : this.signaturePath,
     );
   }
 
@@ -11713,7 +11786,9 @@ class SupplierPayment extends DataClass implements Insertable<SupplierPayment> {
           ..write('paidAt: $paidAt, ')
           ..write('note: $note, ')
           ..write('userId: $userId, ')
-          ..write('userName: $userName')
+          ..write('userName: $userName, ')
+          ..write('receivedBy: $receivedBy, ')
+          ..write('signaturePath: $signaturePath')
           ..write(')'))
         .toString();
   }
@@ -11735,6 +11810,8 @@ class SupplierPayment extends DataClass implements Insertable<SupplierPayment> {
     note,
     userId,
     userName,
+    receivedBy,
+    signaturePath,
   );
   @override
   bool operator ==(Object other) =>
@@ -11754,7 +11831,9 @@ class SupplierPayment extends DataClass implements Insertable<SupplierPayment> {
           other.paidAt == this.paidAt &&
           other.note == this.note &&
           other.userId == this.userId &&
-          other.userName == this.userName);
+          other.userName == this.userName &&
+          other.receivedBy == this.receivedBy &&
+          other.signaturePath == this.signaturePath);
 }
 
 class SupplierPaymentsCompanion extends UpdateCompanion<SupplierPayment> {
@@ -11773,6 +11852,8 @@ class SupplierPaymentsCompanion extends UpdateCompanion<SupplierPayment> {
   final Value<String> note;
   final Value<String> userId;
   final Value<String> userName;
+  final Value<String> receivedBy;
+  final Value<String> signaturePath;
   final Value<int> rowid;
   const SupplierPaymentsCompanion({
     this.createdAt = const Value.absent(),
@@ -11790,6 +11871,8 @@ class SupplierPaymentsCompanion extends UpdateCompanion<SupplierPayment> {
     this.note = const Value.absent(),
     this.userId = const Value.absent(),
     this.userName = const Value.absent(),
+    this.receivedBy = const Value.absent(),
+    this.signaturePath = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SupplierPaymentsCompanion.insert({
@@ -11808,6 +11891,8 @@ class SupplierPaymentsCompanion extends UpdateCompanion<SupplierPayment> {
     this.note = const Value.absent(),
     this.userId = const Value.absent(),
     this.userName = const Value.absent(),
+    this.receivedBy = const Value.absent(),
+    this.signaturePath = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : createdAt = Value(createdAt),
        updatedAt = Value(updatedAt),
@@ -11831,6 +11916,8 @@ class SupplierPaymentsCompanion extends UpdateCompanion<SupplierPayment> {
     Expression<String>? note,
     Expression<String>? userId,
     Expression<String>? userName,
+    Expression<String>? receivedBy,
+    Expression<String>? signaturePath,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -11849,6 +11936,8 @@ class SupplierPaymentsCompanion extends UpdateCompanion<SupplierPayment> {
       if (note != null) 'note': note,
       if (userId != null) 'user_id': userId,
       if (userName != null) 'user_name': userName,
+      if (receivedBy != null) 'received_by': receivedBy,
+      if (signaturePath != null) 'signature_path': signaturePath,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -11869,6 +11958,8 @@ class SupplierPaymentsCompanion extends UpdateCompanion<SupplierPayment> {
     Value<String>? note,
     Value<String>? userId,
     Value<String>? userName,
+    Value<String>? receivedBy,
+    Value<String>? signaturePath,
     Value<int>? rowid,
   }) {
     return SupplierPaymentsCompanion(
@@ -11887,6 +11978,8 @@ class SupplierPaymentsCompanion extends UpdateCompanion<SupplierPayment> {
       note: note ?? this.note,
       userId: userId ?? this.userId,
       userName: userName ?? this.userName,
+      receivedBy: receivedBy ?? this.receivedBy,
+      signaturePath: signaturePath ?? this.signaturePath,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -11939,6 +12032,12 @@ class SupplierPaymentsCompanion extends UpdateCompanion<SupplierPayment> {
     if (userName.present) {
       map['user_name'] = Variable<String>(userName.value);
     }
+    if (receivedBy.present) {
+      map['received_by'] = Variable<String>(receivedBy.value);
+    }
+    if (signaturePath.present) {
+      map['signature_path'] = Variable<String>(signaturePath.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -11963,6 +12062,8 @@ class SupplierPaymentsCompanion extends UpdateCompanion<SupplierPayment> {
           ..write('note: $note, ')
           ..write('userId: $userId, ')
           ..write('userName: $userName, ')
+          ..write('receivedBy: $receivedBy, ')
+          ..write('signaturePath: $signaturePath, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -17537,6 +17638,8 @@ typedef $$SupplierPaymentsTableCreateCompanionBuilder =
       Value<String> note,
       Value<String> userId,
       Value<String> userName,
+      Value<String> receivedBy,
+      Value<String> signaturePath,
       Value<int> rowid,
     });
 typedef $$SupplierPaymentsTableUpdateCompanionBuilder =
@@ -17556,6 +17659,8 @@ typedef $$SupplierPaymentsTableUpdateCompanionBuilder =
       Value<String> note,
       Value<String> userId,
       Value<String> userName,
+      Value<String> receivedBy,
+      Value<String> signaturePath,
       Value<int> rowid,
     });
 
@@ -17640,6 +17745,16 @@ class $$SupplierPaymentsTableFilterComposer
 
   ColumnFilters<String> get userName => $composableBuilder(
     column: $table.userName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get receivedBy => $composableBuilder(
+    column: $table.receivedBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get signaturePath => $composableBuilder(
+    column: $table.signaturePath,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -17727,6 +17842,16 @@ class $$SupplierPaymentsTableOrderingComposer
     column: $table.userName,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get receivedBy => $composableBuilder(
+    column: $table.receivedBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get signaturePath => $composableBuilder(
+    column: $table.signaturePath,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SupplierPaymentsTableAnnotationComposer
@@ -17786,6 +17911,16 @@ class $$SupplierPaymentsTableAnnotationComposer
 
   GeneratedColumn<String> get userName =>
       $composableBuilder(column: $table.userName, builder: (column) => column);
+
+  GeneratedColumn<String> get receivedBy => $composableBuilder(
+    column: $table.receivedBy,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get signaturePath => $composableBuilder(
+    column: $table.signaturePath,
+    builder: (column) => column,
+  );
 }
 
 class $$SupplierPaymentsTableTableManager
@@ -17840,6 +17975,8 @@ class $$SupplierPaymentsTableTableManager
                 Value<String> note = const Value.absent(),
                 Value<String> userId = const Value.absent(),
                 Value<String> userName = const Value.absent(),
+                Value<String> receivedBy = const Value.absent(),
+                Value<String> signaturePath = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SupplierPaymentsCompanion(
                 createdAt: createdAt,
@@ -17857,6 +17994,8 @@ class $$SupplierPaymentsTableTableManager
                 note: note,
                 userId: userId,
                 userName: userName,
+                receivedBy: receivedBy,
+                signaturePath: signaturePath,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -17876,6 +18015,8 @@ class $$SupplierPaymentsTableTableManager
                 Value<String> note = const Value.absent(),
                 Value<String> userId = const Value.absent(),
                 Value<String> userName = const Value.absent(),
+                Value<String> receivedBy = const Value.absent(),
+                Value<String> signaturePath = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SupplierPaymentsCompanion.insert(
                 createdAt: createdAt,
@@ -17893,6 +18034,8 @@ class $$SupplierPaymentsTableTableManager
                 note: note,
                 userId: userId,
                 userName: userName,
+                receivedBy: receivedBy,
+                signaturePath: signaturePath,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

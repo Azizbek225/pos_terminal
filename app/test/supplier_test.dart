@@ -116,6 +116,83 @@ void main() {
     expect(await repo.balanceOf(id), 300000);
   });
 
+  test("kam kelgan tovar qarzni kamaytiradi, firma bizga qarz bo'lishi mumkin", () async {
+    final id = await repo.saveSupplier(name: 'Gigiena');
+    // Prays-list bo'yicha 100 000 to'landi, lekin 80 000 lik tovar keldi.
+    await purchase(id, 100000, paid: 100000, date: 1000);
+    await repo.createCredit(
+      supplierId: id,
+      lines: const [PurchaseLineInput(productId: 'p', productName: 'Sovun', qty: 20, price: 1000)],
+      note: 'kelmadi',
+      userId: admin.id,
+      userName: admin.fullName,
+    );
+    expect(await repo.balanceOf(id), -20000);
+    final s = await repo.watchSummary().first;
+    expect(s.totalDebt, 0);
+    expect(s.totalAdvance, 20000);
+
+    final purchases = await repo.watchPurchases(id).first;
+    final rows = SupplierRepository.allocate(purchases, 100000);
+    expect(rows.firstWhere((r) => r.isCredit).purchase.total, -20000);
+    expect(rows.firstWhere((r) => !r.isCredit).isPaid, isTrue);
+
+    // Firma pulni qaytaradi (imzo bilan) -> hisob yopiladi.
+    await repo.addPayment(
+      supplierId: id,
+      amount: 20000,
+      refund: true,
+      receivedBy: 'Agent Ali',
+      signaturePath: 'imzo.png',
+      userId: admin.id,
+      userName: admin.fullName,
+    );
+    expect(await repo.balanceOf(id), 0);
+    final pays = await repo.watchPayments(id).first;
+    final refund = pays.firstWhere((m) => m.amount < 0);
+    expect(refund.receivedBy, 'Agent Ali');
+    expect(refund.signaturePath, 'imzo.png');
+    final ledger = SupplierRepository.ledger(purchases, pays);
+    expect(ledger.first.debit, 20000);
+    expect(ledger.first.balance, 0);
+    expect(() => repo.createCredit(supplierId: id, amount: 0, userId: admin.id, userName: admin.fullName),
+        throwsException);
+  });
+
+  test('kirim paytidagi to\'lovga agent imzosi yoziladi', () async {
+    final id = await repo.saveSupplier(name: 'F');
+    await repo.createPurchase(
+      supplierId: id,
+      lines: const [PurchaseLineInput(productId: 'a', productName: 'A', qty: 1, price: 5000)],
+      paidNow: 5000,
+      receivedBy: 'Vali',
+      signaturePath: 's.png',
+      userId: admin.id,
+      userName: admin.fullName,
+    );
+    final m = (await repo.watchPayments(id).first).single;
+    expect((m.receivedBy, m.signaturePath), ('Vali', 's.png'));
+  });
+
+  test("v2 baza yangilanganda imzo ustunlari qo'shiladi", () async {
+    final dir = await Directory.systemTemp.createTemp('pos_mig2');
+    final file = File('${dir.path}/db.sqlite');
+    final db1 = AppDatabase(NativeDatabase(file));
+    await db1.customSelect('SELECT 1').get();
+    await db1.customStatement('ALTER TABLE supplier_payments DROP COLUMN received_by');
+    await db1.customStatement('ALTER TABLE supplier_payments DROP COLUMN signature_path');
+    await db1.customStatement('PRAGMA user_version = 2');
+    await db1.close();
+
+    final db2 = AppDatabase(NativeDatabase(file));
+    final r = SupplierRepository(db2, () async => 'dev');
+    final id = await r.saveSupplier(name: 'X');
+    await r.addPayment(supplierId: id, amount: 1, signaturePath: 'a.png', userId: 'u', userName: 'U');
+    expect((await r.watchPayments(id).first).single.signaturePath, 'a.png');
+    await db2.close();
+    await dir.delete(recursive: true);
+  });
+
   test("eski (v1) baza yangilanganda firma jadvallari yaratiladi", () async {
     final dir = await Directory.systemTemp.createTemp('pos_mig');
     final file = File('${dir.path}/db.sqlite');

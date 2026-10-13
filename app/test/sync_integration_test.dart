@@ -173,11 +173,22 @@ void main() {
     expect(File('${dirB.path}/$photo').existsSync(), isTrue);
 
     // B da qarz to'lanadi -> A da ham qarz yopiladi.
-    await repoB.addPayment(supplierId: sid, amount: 50000, userId: admin.id, userName: admin.fullName);
+    final sign = '$tag-imzo.png';
+    File('${dirB.path}/$sign').writeAsBytesSync([0x89, 0x50, 0x4E, 0x47]);
+    await repoB.addPayment(
+      supplierId: sid,
+      amount: 50000,
+      receivedBy: 'Agent',
+      signaturePath: sign,
+      userId: admin.id,
+      userName: admin.fullName,
+    );
     await syncB.syncNow();
     ProductImages.debugDir = dirA.path;
     await syncA.syncNow();
     expect(await repoA.balanceOf(sid), 0);
+    expect(File('${dirA.path}/$sign').existsSync(), isTrue);
+    expect((await repoA.watchPayments(sid).first).firstWhere((m) => m.signaturePath == sign).receivedBy, 'Agent');
   }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
 
   test('server yangidan o\'rnatilsa (eski kursor) ham hamma narsa olinadi', () async {

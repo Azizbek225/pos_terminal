@@ -93,11 +93,11 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
     if (_lines.isEmpty) return;
     final total = _lines.fold<int>(0, (s, l) => s + (l.qty * l.cost).round());
     final supplier = _supplierId == null ? null : await ref.read(supplierRepoProvider).byId(_supplierId!);
-    ({int paid, PaymentType method})? pay;
+    ({int paid, PaymentType method, String agent, String signature})? pay;
     if (supplier != null) {
       final debt = await ref.read(supplierRepoProvider).balanceOf(supplier.id);
       if (!mounted) return;
-      pay = await showDialog<({int paid, PaymentType method})>(
+      pay = await showDialog<({int paid, PaymentType method, String agent, String signature})>(
         context: context,
         builder: (_) => _ReceivePaymentDialog(supplierName: supplier.name, total: total, debtBefore: debt),
       );
@@ -113,7 +113,9 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
           : DateTime(_docDate.year, _docDate.month, _docDate.day, 12);
       String? purchaseId;
       if (supplier != null) {
-        purchaseId = await ref.read(supplierRepoProvider).createPurchase(
+        purchaseId = await ref
+            .read(supplierRepoProvider)
+            .createPurchase(
               supplierId: supplier.id,
               lines: [
                 for (final l in _lines)
@@ -132,6 +134,8 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
               imagePaths: _photos,
               paidNow: pay!.paid,
               method: pay.method,
+              receivedBy: pay.agent,
+              signaturePath: pay.signature,
               userId: user.id,
               userName: user.fullName,
             );
@@ -422,6 +426,8 @@ class _ReceivePaymentDialog extends StatefulWidget {
 
 class _ReceivePaymentDialogState extends State<_ReceivePaymentDialog> {
   final _paid = TextEditingController();
+  final _agent = TextEditingController();
+  String _signature = '';
   PaymentType _method = PaymentType.cash;
 
   int get _amount => (Fmt.parseNum(_paid.text) ?? 0).round();
@@ -429,6 +435,7 @@ class _ReceivePaymentDialogState extends State<_ReceivePaymentDialog> {
   @override
   void dispose() {
     _paid.dispose();
+    _agent.dispose();
     super.dispose();
   }
 
@@ -445,40 +452,74 @@ class _ReceivePaymentDialogState extends State<_ReceivePaymentDialog> {
       content: SizedBox(
         width: 420,
         child: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('Kirim summasi: ${Fmt.money(widget.total)}',
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-            if (widget.debtBefore != 0) Text('Oldingi holat — ${debtLabel(widget.debtBefore)}'),
-            const SizedBox(height: 12),
-            MoneyField(
-              controller: _paid,
-              label: "Hozir to'lanadi",
-              autofocus: true,
-              helper: "Kassada borini kiriting, qolgani qarzga yoziladi",
-              onChanged: (_) => setState(() {}),
-            ),
-            const SizedBox(height: 8),
-            Wrap(spacing: 8, runSpacing: 4, children: [
-              ActionChip(label: const Text("To'liq"), onPressed: () => _set(widget.total)),
-              ActionChip(label: const Text('Hammasi qarzga'), onPressed: () => _set(0)),
-              for (final m in [PaymentType.cash, PaymentType.card, PaymentType.transfer])
-                ChoiceChip(label: Text(m.label), selected: _method == m, onSelected: (_) => setState(() => _method = m)),
-            ]),
-            const SizedBox(height: 12),
-            if (toDebt > 0)
-              Text('Qarzga yoziladi: ${Fmt.money(toDebt)}',
-                  style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.bold)),
-            if (toDebt < 0)
-              Text('Ortiqcha ${Fmt.money(-toDebt)} avans (yoki eski qarzga) hisoblanadi',
-                  style: TextStyle(color: Colors.green.shade700)),
-            Text('Firma bilan yangi holat — ${debtLabel(after)}', style: TextStyle(color: debtColor(context, after))),
-          ]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Kirim summasi: ${Fmt.money(widget.total)}',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              if (widget.debtBefore != 0) Text('Oldingi holat — ${debtLabel(widget.debtBefore)}'),
+              const SizedBox(height: 12),
+              MoneyField(
+                controller: _paid,
+                label: "Hozir to'lanadi",
+                autofocus: true,
+                helper: "Kassada borini kiriting, qolgani qarzga yoziladi",
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  ActionChip(label: const Text("To'liq"), onPressed: () => _set(widget.total)),
+                  ActionChip(label: const Text('Hammasi qarzga'), onPressed: () => _set(0)),
+                  for (final m in [PaymentType.cash, PaymentType.card, PaymentType.transfer])
+                    ChoiceChip(
+                      label: Text(m.label),
+                      selected: _method == m,
+                      onSelected: (_) => setState(() => _method = m),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (toDebt > 0)
+                Text(
+                  'Qarzga yoziladi: ${Fmt.money(toDebt)}',
+                  style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.bold),
+                ),
+              if (toDebt < 0)
+                Text(
+                  'Ortiqcha ${Fmt.money(-toDebt)} avans (yoki eski qarzga) hisoblanadi',
+                  style: TextStyle(color: Colors.green.shade700),
+                ),
+              Text('Firma bilan yangi holat — ${debtLabel(after)}', style: TextStyle(color: debtColor(context, after))),
+              if (paid > 0) ...[
+                const SizedBox(height: 12),
+                SignatureField(
+                  name: _agent,
+                  signature: _signature,
+                  subtitle: 'Qabul qilindi: ${Fmt.money(paid)}\n${widget.supplierName}',
+                  onSigned: (n) => setState(() => _signature = n),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Bekor qilish')),
         FilledButton.icon(
-          onPressed: paid < 0 ? null : () => Navigator.pop(context, (paid: paid, method: _method)),
+          onPressed: paid < 0
+              ? null
+              : () => Navigator.pop(context, (
+                  paid: paid,
+                  method: _method,
+                  agent: _agent.text,
+                  signature: paid > 0 ? _signature : '',
+                )),
           icon: const Icon(Icons.move_to_inbox),
           label: const Text('Saqlash'),
         ),

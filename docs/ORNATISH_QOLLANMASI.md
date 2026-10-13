@@ -353,6 +353,15 @@ Kirimni bossangiz — tovarlar, soni, narxi va suratlar. Qarzni istalgan payt qi
 to'lovlar eng eski kirimdan boshlab yopadi. Firmalar, kirimlar, to'lovlar va suratlar barcha qurilmalarga sinxronlanadi
 (buning uchun PosServer.exe ham yangi versiyaga almashtirilishi kerak).
 
+**Firma sizga qarz bo'lsa.** Prays-list bo'yicha to'lab, tovarning bir qismi kelmasa (yoki tovar firmaga qaytarilsa):
+kirim sahifasida **"Kam keldi / firmaga qaytarish"** — tovar va miqdorni tanlang, tovar ombordan ayriladi va summasi
+qarzdan chegiriladi. Faqat summa bo'yicha — firma sahifasida **"Kam kelgan tovar"**. Qarz minusga o'tsa, firma sizga
+qarz deb ko'rsatiladi (yashil); firma pulni qaytarganda **"Firmadan pul olish"**.
+
+**Agent imzosi.** Har bir to'lovda (va kirim paytidagi to'lovda) agent ismini yozing va **"Imzo qo'ydirish"** tugmasini
+bosing — agent barmog'i bilan telefon ekraniga imzo chekadi. Imzo to'lovlar ro'yxatida ko'rinadi (bosilsa kattalashadi)
+va boshqa qurilmalarga ham o'tadi.
+
 ---
 
 ## 9. Birinchi ishga tushirish
