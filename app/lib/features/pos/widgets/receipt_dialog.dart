@@ -88,7 +88,7 @@ class _ReceiptDialog extends ConsumerWidget {
   Future<void> _refund(BuildContext context, WidgetRef ref) async {
     final user = ref.read(authProvider)!;
     var admin = user;
-    if (UserRole.fromCode(user.role) != UserRole.admin) {
+    if (ref.read(currentRoleProvider) != UserRole.admin) {
       final a = await requestAdminApproval(context, ref, reason: 'Chekni qaytarish uchun Admin tasdig\'i kerak');
       if (a == null) return;
       admin = a;

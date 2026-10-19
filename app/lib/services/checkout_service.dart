@@ -1,3 +1,4 @@
+import '../core/branch.dart';
 import '../core/constants.dart';
 import '../core/security.dart';
 import '../data/database.dart';
@@ -49,15 +50,16 @@ class CheckoutService {
   /// Chegirma qoidalarini tekshirish:
   /// * Kassir/Omborchi — maksimal 20%.
   /// * 20% dan yuqori — faqat Admin (o'zi yoki tasdiqlovchi Admin).
-  static void validateDiscount(CartState cart, User cashier) {
+  void validateDiscount(CartState cart, User cashier) => validateDiscountIn(cart, cashier, stock.branch.id);
+
+  static void validateDiscountIn(CartState cart, User cashier, String branchId) {
     final pct = cart.discountPercentEquivalent;
     if (pct > kAbsoluteMaxDiscountPercent) {
       throw CheckoutException("Chegirma 100% dan oshmasligi kerak");
     }
     if (pct > kCashierMaxDiscountPercent + 0.0001) {
-      final isAdmin = UserRole.fromCode(cashier.role) == UserRole.admin;
-      final approved = cart.discountApprovedBy != null &&
-          UserRole.fromCode(cart.discountApprovedBy!.role) == UserRole.admin;
+      final isAdmin = cashier.roleIn(branchId) == UserRole.admin;
+      final approved = cart.discountApprovedBy != null && cart.discountApprovedBy!.roleIn(branchId) == UserRole.admin;
       if (!isAdmin && !approved) {
         throw CheckoutException("20% dan yuqori chegirmani faqat Admin bera oladi");
       }
@@ -120,6 +122,7 @@ class CheckoutService {
         deviceId: dev,
         isDeleted: false,
         dirty: true,
+        branchId: stock.branch.id,
       );
       await db.into(db.sales).insert(sale);
 
@@ -187,7 +190,7 @@ class CheckoutService {
 
   /// Chekni to'liq qaytarish: tovarlar omborga qaytadi, statistika kamayadi.
   Future<void> refund(SaleWithItems s, User by, {String reason = ''}) async {
-    if (UserRole.fromCode(by.role) != UserRole.admin) {
+    if (by.roleIn(s.sale.branchId) != UserRole.admin) {
       throw CheckoutException('Qaytarishni faqat Admin amalga oshiradi');
     }
     if (s.sale.status == SaleStatus.refunded.code) {
@@ -209,6 +212,7 @@ class CheckoutService {
         ],
         userId: by.id,
         userName: by.fullName,
+        branchId: s.sale.branchId,
       );
       final at = DateTime.fromMillisecondsSinceEpoch(s.sale.createdAt);
       for (final i in s.items) {

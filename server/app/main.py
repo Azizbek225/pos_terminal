@@ -32,6 +32,9 @@ async def lifespan(_: FastAPI):
     yield
 
 
+# Ilovadagi kDefaultBranchId bilan bir xil.
+DEFAULT_BRANCH_ID = "00000000-0000-4000-8000-200000000001"
+
 app = FastAPI(title="POS Terminal Sync", version=__version__, lifespan=lifespan)
 
 
@@ -159,6 +162,7 @@ def daily_report(
     session: SessionDep,
     date_from: Annotated[str, Query(description="YYYY-MM-DD")],
     date_to: Annotated[str, Query(description="YYYY-MM-DD (shu kun ham kiradi)")],
+    branch_id: Annotated[str | None, Query(description="Faqat shu filial (bo'sh — hammasi)")] = None,
 ) -> dict:
     """Barcha qurilmalar bo'yicha kunlik savdo (egasi uchun masofaviy hisobot)."""
     try:
@@ -174,6 +178,9 @@ def daily_report(
         d = r.data
         created = int(d.get("created_at") or 0)
         if not (start <= created < end) or d.get("status") != "completed" or d.get("is_deleted"):
+            continue
+        # Filial qo'shilishidan oldingi cheklar — asosiy filialniki.
+        if branch_id and (d.get("branch_id") or DEFAULT_BRANCH_ID) != branch_id:
             continue
         key = datetime.fromtimestamp(created / 1000).strftime("%Y-%m-%d")
         days[key]["total"] += int(d.get("total") or 0)

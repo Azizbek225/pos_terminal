@@ -354,10 +354,11 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                   text('initialStock', "Boshlang'ich qoldiq", number: true, suffix: _unit)
                 else
                   InputDecorator(
-                    decoration: const InputDecoration(labelText: 'Joriy qoldiq'),
+                    decoration: const InputDecoration(labelText: 'Joriy qoldiq (shu filial)'),
                     child: Text('${Fmt.qty(widget.product!.stockQty)} $_unit'),
                   ),
               ]),
+              if (!_isNew) _BranchStock(productId: widget.product!.id, unit: _unit),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _isWeighted,
@@ -410,6 +411,31 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Tovarning boshqa filiallardagi qoldig'i (filial bittadan ko'p bo'lsa).
+class _BranchStock extends ConsumerWidget {
+  const _BranchStock({required this.productId, required this.unit});
+  final String productId;
+  final String unit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final branches = (ref.watch(branchesProvider).value ?? const <Branch>[]).where((b) => b.isActive).toList();
+    if (branches.length < 2) return const SizedBox.shrink();
+    return FutureBuilder<Map<String, double>>(
+      future: ref.read(stockRepoProvider).stockByBranch(productId),
+      builder: (context, snap) {
+        final m = snap.data ?? const <String, double>{};
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Wrap(spacing: 8, runSpacing: 4, children: [
+            for (final b in branches) Chip(label: Text('${b.name}: ${Fmt.qty(m[b.id] ?? 0)} $unit')),
+          ]),
+        );
+      },
     );
   }
 }

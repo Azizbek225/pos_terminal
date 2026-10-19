@@ -35,6 +35,21 @@ mixin SyncColumns on Table {
   BoolColumn get dirty => boolean().withDefault(const Constant(true))();
 }
 
+/// Filiallar (do'konlar). Tovarlar va shtrix-kodlar hamma filialda umumiy,
+/// savdo, ombor qoldig'i, kirimlar va jurnal esa har bir filialda alohida.
+@DataClassName('Branch')
+class Branches extends Table with SyncColumns {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get address => text().withDefault(const Constant(''))();
+  TextColumn get phone => text().withDefault(const Constant(''))();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Foydalanuvchilar (Admin, Kassir, Omborchi).
 @DataClassName('User')
 class Users extends Table with SyncColumns {
@@ -47,6 +62,10 @@ class Users extends Table with SyncColumns {
   TextColumn get phone => text().nullable()();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
   IntColumn get lastLoginAt => integer().nullable()();
+
+  /// Filiallardagi ruxsatlar: JSON `{"<filial_id>": "cashier", ...}`.
+  /// Bo'sh — asosiy `role` barcha filiallarda amal qiladi.
+  TextColumn get branchRoles => text().withDefault(const Constant(''))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -152,6 +171,7 @@ class Sales extends Table with SyncColumns {
   IntColumn get refundedAt => integer().nullable()();
   TextColumn get refundedBy => text().nullable()();
   TextColumn get note => text().withDefault(const Constant(''))();
+  TextColumn get branchId => text().withDefault(const Constant(kDefaultBranchId))(); // Filial (eski yozuvlar — asosiy)
 
   @override
   Set<Column> get primaryKey => {id};
@@ -189,6 +209,7 @@ class StockMovements extends Table with SyncColumns {
   TextColumn get note => text().withDefault(const Constant(''))();
   TextColumn get userId => text().withDefault(const Constant(''))();
   TextColumn get userName => text().withDefault(const Constant(''))();
+  TextColumn get branchId => text().withDefault(const Constant(kDefaultBranchId))(); // Filial (eski yozuvlar — asosiy)
 
   @override
   Set<Column> get primaryKey => {id};
@@ -237,6 +258,12 @@ class AuditLog extends Table with SyncColumns {
   TextColumn get action => text()();
   TextColumn get details => text().withDefault(const Constant(''))();
 
+  /// Bo'sh — umumiy o'zgarish (tovar, kategoriya, xodim); aks holda filial ID si.
+  TextColumn get branchId => text().withDefault(const Constant(kDefaultBranchId))(); // Filial (eski yozuvlar — asosiy)
+
+  /// Tegishli yozuv (masalan tovar ID si).
+  TextColumn get refId => text().withDefault(const Constant(''))();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -273,6 +300,7 @@ class SupplierPurchases extends Table with SyncColumns {
   TextColumn get note => text().withDefault(const Constant(''))();
   TextColumn get userId => text().withDefault(const Constant(''))();
   TextColumn get userName => text().withDefault(const Constant(''))();
+  TextColumn get branchId => text().withDefault(const Constant(kDefaultBranchId))(); // Filial (eski yozuvlar — asosiy)
 
   @override
   Set<Column> get primaryKey => {id};
@@ -312,6 +340,7 @@ class SupplierPayments extends Table with SyncColumns {
   /// Pulni olgan agent ismi va uning ekranga chizilgan imzosi (PNG fayl nomi).
   TextColumn get receivedBy => text().withDefault(const Constant(''))();
   TextColumn get signaturePath => text().withDefault(const Constant(''))();
+  TextColumn get branchId => text().withDefault(const Constant(kDefaultBranchId))(); // Filial (eski yozuvlar — asosiy)
 
   @override
   Set<Column> get primaryKey => {id};
@@ -328,6 +357,7 @@ class Settings extends Table {
 }
 
 @DriftDatabase(tables: [
+  Branches,
   Users,
   Categories,
   Products,
@@ -347,7 +377,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   /// Baza fayli ilovaning shaxsiy papkasida saqlanadi (Hujjatlar papkasida emas —
   /// foydalanuvchi tasodifan o'chirib yubormasligi va bulutli sinxronlash
@@ -380,6 +410,21 @@ class AppDatabase extends _$AppDatabase {
           for (final c in [supplierPayments.receivedBy, supplierPayments.signaturePath]) {
             if (!await _columnExists('supplier_payments', c.name)) await m.addColumn(supplierPayments, c);
           }
+          // v4: filiallar. Mavjud savdo, qoldiq va kirimlar asosiy filialga o'tadi
+          // (ustunning standart qiymati).
+          if (!await _tableExists('branches')) await m.createTable(branches);
+          if (!await _columnExists('users', 'branch_roles')) await m.addColumn(users, users.branchRoles);
+          for (final (t, c) in <(TableInfo, GeneratedColumn)>[
+            (sales, sales.branchId),
+            (stockMovements, stockMovements.branchId),
+            (auditLog, auditLog.branchId),
+            (auditLog, auditLog.refId),
+            (supplierPurchases, supplierPurchases.branchId),
+            (supplierPayments, supplierPayments.branchId),
+          ]) {
+            if (!await _columnExists(t.actualTableName, c.name)) await m.addColumn(t, c);
+          }
+          await _seedDefaultBranch();
           await _createIndexes();
         },
         beforeOpen: (details) async {
@@ -422,6 +467,9 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS idx_purchase_items_purchase ON supplier_purchase_items(purchase_id)',
       'CREATE INDEX IF NOT EXISTS idx_purchase_items_product ON supplier_purchase_items(product_id)',
       'CREATE INDEX IF NOT EXISTS idx_supplier_payments_supplier ON supplier_payments(supplier_id, paid_at)',
+      'CREATE INDEX IF NOT EXISTS idx_sales_branch ON sales(branch_id, created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_movements_branch ON stock_movements(branch_id, product_id)',
+      'CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at)',
     ];
     for (final s in stmts) {
       await customStatement(s);
@@ -435,8 +483,23 @@ class AppDatabase extends _$AppDatabase {
   /// Birinchi ishga tushirishda: standart Admin va asosiy kategoriyalar.
   /// ID lar deterministik, `updatedAt = 1` — istalgan haqiqiy o'zgarish
   /// (masalan, parolni almashtirish) sinxronlashda ustun keladi.
+  /// Asosiy filial (ID hamma qurilmada bir xil, `updatedAt = 1`).
+  Future<void> _seedDefaultBranch() async {
+    await into(branches).insert(
+      BranchesCompanion.insert(
+        id: kDefaultBranchId,
+        name: 'Asosiy filial',
+        createdAt: 1,
+        updatedAt: 1,
+        dirty: const Value(false),
+      ),
+      mode: InsertMode.insertOrIgnore,
+    );
+  }
+
   Future<void> _seed() async {
     const seedTime = 1;
+    await _seedDefaultBranch();
     final salt = PasswordHasher.newSalt();
     await into(users).insert(UsersCompanion.insert(
       id: defaultAdminId,

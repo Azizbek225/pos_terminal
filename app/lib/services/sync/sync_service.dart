@@ -94,6 +94,7 @@ class SyncService {
   };
 
   TableInfo _table(String entity) => switch (entity) {
+    SyncEntities.branches => db.branches,
     SyncEntities.users => db.users,
     SyncEntities.categories => db.categories,
     SyncEntities.products => db.products,

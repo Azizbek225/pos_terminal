@@ -57,7 +57,19 @@ void main() {
     await tester.pumpAndSettle();
 
     final wide = size.width >= 900;
-    final labels = ['Dashboard', 'Ombor', 'Tarix', 'Qarzlar', 'Mavsumiy', 'Alertlar', 'Xodimlar', 'Sozlamalar', 'Savdo'];
+    final labels = [
+      'Monitoring',
+      'Dashboard',
+      'Ombor',
+      'Tarix',
+      'Qarzlar',
+      "O'zgarishlar",
+      'Mavsumiy',
+      'Alertlar',
+      'Xodimlar',
+      'Sozlamalar',
+      'Savdo',
+    ];
     for (final l in labels) {
       if (wide) {
         await tester.tap(find.text(l).last);

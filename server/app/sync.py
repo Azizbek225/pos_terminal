@@ -13,6 +13,7 @@ from .models import Device, ServerInfo, SyncCounter, SyncRecord
 
 # Ilovadagi SyncEntities bilan bir xil bo'lishi shart.
 ENTITIES = (
+    "branches",
     "users",
     "categories",
     "products",

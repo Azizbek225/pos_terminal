@@ -67,7 +67,7 @@ class _DiscountDialogState extends ConsumerState<_DiscountDialog> {
       return;
     }
     User? approvedBy;
-    final isAdmin = UserRole.fromCode(user.role) == UserRole.admin;
+    final isAdmin = ref.read(currentRoleProvider) == UserRole.admin;
     if (pct > kCashierMaxDiscountPercent && !isAdmin) {
       approvedBy = await requestAdminApproval(
         context,

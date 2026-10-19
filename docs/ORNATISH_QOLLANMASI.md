@@ -262,7 +262,25 @@ Belgidagi raqam — hali yuborilmagan o'zgarishlar soni. Belgini bosish darhol s
   ```
   So'ng `v_sales`, `v_sale_items`, `v_products`, `v_stock`, `v_daily_sales` jadvallaridan o'qing.
 
-### 6.6. Server zaxira nusxasi
+### 6.6. Telefondan internet orqali real vaqtda kuzatish (Monitoring)
+
+Do'kondan tashqarida (uyda, yo'lda, mobil internetda) savdoni kuzatish uchun telefon PosServer.exe
+turgan kompyuterga internet orqali ulanishi kerak. Eng oson va xavfsiz yo'l — **Tailscale** (bepul):
+
+1. Do'kondagi kompyuterga (PosServer.exe turgan) va telefoningizga **Tailscale** ilovasini o'rnating
+   (tailscale.com, Google Play / App Store) va ikkalasida **bitta akkaunt** bilan kiring.
+2. Kompyuterdagi Tailscale belgisidan uning IP manzilini oling (`100.x.x.x`).
+3. Telefonda POS ilovasi → **Sozlamalar → Sinxronlash** → server manzili `http://100.x.x.x:8000`,
+   API kalit — `api_kalit.txt` dagi kalit → **Ulanishni tekshirish** → **Saqlash**.
+   (Do'kon Wi-Fi manzili ham eslab qolinadi — dastur qaysi biri ishlasa, o'shandan foydalanadi.)
+4. Ilovada **Monitoring** bo'limini oching: u ochiq turganda har **5 soniyada** yangilanadi —
+   har bir filialning bugungi savdosi, cheklar soni, foyda, kam qoldiqli tovarlar, oxirgi cheklar
+   (qaysi kassir, qancha, qaysi to'lov) va bugungi o'zgarishlar ko'rinadi.
+
+Kassalar har bir savdodan 3 soniya keyin serverga yuboradi, shuning uchun telefonda savdo deyarli
+darhol paydo bo'ladi. Telefon internetsiz qolsa — oxirgi olingan ma'lumot ko'rinib turadi.
+
+### 6.7. Server zaxira nusxasi
 
 ```bash
 docker compose exec -T db pg_dump -U pos pos > zaxira_$(date +%F).sql     # nusxa olish
@@ -370,6 +388,34 @@ qarz deb ko'rsatiladi (yashil); firma pulni qaytarganda **"Firmadan pul olish"**
 **Agent imzosi.** Har bir to'lovda (va kirim paytidagi to'lovda) agent ismini yozing va **"Imzo qo'ydirish"** tugmasini
 bosing — agent barmog'i bilan telefon ekraniga imzo chekadi. Imzo to'lovlar ro'yxatida ko'rinadi (bosilsa kattalashadi)
 va boshqa qurilmalarga ham o'tadi.
+
+### 8.6. Filiallar
+
+**Sozlamalar → Filiallar** (faqat bosh admin) bo'limida filial qo'shiladi. Filial ikkita va undan ko'p
+bo'lsa, yuqori panelning chap tomonida **filial tanlagich** paydo bo'ladi.
+
+- **Tovarlar, shtrix-kodlar, kategoriyalar va firmalar** — hamma filialda bir xil (bir marta kiritiladi).
+- **Savdo tarixi, ombordagi qoldiq, kirimlar, firmalarga qarz, dashboard, mavsumiy statistika va
+  o'zgarishlar jurnali** — har bir filialda **alohida**. Filialni almashtirsangiz, shu filialniki ko'rinadi.
+- Har bir kassa (qurilma) qaysi filialda ishlasa, o'sha filial tanlab qo'yiladi — savdo shu filialga yoziladi.
+- Tovar kartasida boshqa filiallardagi qoldiq ham ko'rinadi.
+
+**Ruxsatlar.** **Xodimlar** bo'limida xodimni ochib, "Barcha filiallarda shu rol" ni o'chirsangiz, har bir filial
+uchun alohida rol (Admin / Kassir / Omborchi yoki "Ruxsat yo'q") tanlanadi. Masalan, kassir faqat o'z
+filialida ishlaydi; filial mudiri faqat o'z filialida Admin. Filiallar va xodimlarni faqat **bosh admin**
+(barcha filiallarda Admin) boshqaradi. Xodim ruxsati bo'lmagan filialdagi qurilmaga kirsa, dastur uni
+ruxsati bor filialga o'tkazadi.
+
+> Filiallar ishlashi uchun **barcha qurilmalardagi ilovani va PosServer.exe ni yangilang** (eski server
+> filiallar ro'yxatini qabul qilmaydi).
+
+### 8.7. O'zgarishlar jurnali
+
+**O'zgarishlar** bo'limida (Admin va Omborchi) tanlangan kunda dasturda nima bo'lgani ko'rinadi:
+qo'shilgan, o'zgartirilgan va o'chirilgan tovarlar, narx o'zgarishlari (eski → yangi narx), omborga kirim,
+hisobdan chiqarish va firmaga qaytarish, inventarizatsiya, savdo va qaytarilgan cheklar, firmalarga
+to'lovlar, xodim va filial o'zgarishlari — kim va qachon qilgani bilan. Yuqorida kunlik yig'indi raqamlar,
+pastda to'liq ro'yxat (turi bo'yicha filtrlash mumkin). Monitoring sahifasida bugungi oxirgi o'zgarishlar ham chiqadi.
 
 ---
 

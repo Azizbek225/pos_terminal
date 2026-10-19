@@ -137,8 +137,13 @@ const double kCashierMaxDiscountPercent = 20;
 /// Chegirmaning absolyut yuqori chegarasi (Admin uchun ham).
 const double kAbsoluteMaxDiscountPercent = 100;
 
+/// Asosiy (birinchi) filialning doimiy ID si. Barcha qurilmalarda bir xil —
+/// filiallar qo'shilishidan oldingi barcha savdo va qoldiqlar shu filialga tegishli.
+const kDefaultBranchId = '00000000-0000-4000-8000-200000000001';
+
 /// Sinxronlanadigan jadval (entity) nomlari — server bilan bir xil bo'lishi shart.
 class SyncEntities {
+  static const branches = 'branches';
   static const users = 'users';
   static const categories = 'categories';
   static const products = 'products';
@@ -152,6 +157,7 @@ class SyncEntities {
   static const supplierPayments = 'supplier_payments';
 
   static const all = [
+    branches,
     users,
     categories,
     products,

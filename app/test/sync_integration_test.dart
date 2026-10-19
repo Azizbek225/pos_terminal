@@ -6,7 +6,10 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_terminal/core/constants.dart';
 import 'package:pos_terminal/data/database.dart';
+import 'package:pos_terminal/core/branch.dart';
+import 'package:pos_terminal/data/repositories/branch_repository.dart';
 import 'package:pos_terminal/data/repositories/settings_repository.dart';
+import 'package:pos_terminal/data/repositories/stock_repository.dart';
 import 'package:pos_terminal/data/repositories/supplier_repository.dart';
 import 'package:pos_terminal/services/product_images.dart';
 import 'package:pos_terminal/services/sync/sync_service.dart';
@@ -220,5 +223,43 @@ void main() {
     final pb = await b.products.byId(p.id);
     expect(pb, isNotNull);
     expect(pb!.stockQty, 5);
+  }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
+
+  test("filial, uning savdosi va xodim ruxsatlari boshqa qurilmaga alohida o'tadi", () async {
+    final (a, syncA) = await device('F1');
+    final (b, syncB) = await device('F2');
+    final admin = await a.users.login('admin', 'admin123');
+    final branchId = await BranchRepository(a.db, () => a.settings.deviceId()).save(name: 'Filial sinov ${DateTime.now().microsecondsSinceEpoch}');
+    await a.users.save(
+        username: 'f${DateTime.now().millisecondsSinceEpoch % 100000}',
+        fullName: 'Filial kassiri',
+        role: UserRole.cashier,
+        password: '1234',
+        branchRoles: {branchId: UserRole.cashier.code});
+    final p = await a.addProduct('Filial tovari', price: 1000, stock: 7, barcode: '47999${DateTime.now().millisecondsSinceEpoch % 100000000}');
+
+    // A filialga o'tib, o'sha yerda kirim va savdo qiladi.
+    a.branch.set(branchId);
+    await a.stock.recompute();
+    await a.stock.addMovements([MovementInput(productId: p.id, type: MovementType.receipt, qty: 2)],
+        userId: admin.id, userName: admin.fullName);
+    await a.checkout.checkout(
+        cart: CartState(lines: [CartLine(product: (await a.products.byId(p.id))!, qty: 1)]),
+        payment: const PaymentInput(cash: 1000),
+        cashier: admin);
+    await syncA.syncNow();
+    expect(syncA.status.value.state, SyncState.ok, reason: syncA.status.value.message);
+    await syncB.syncNow();
+
+    // B asosiy filialda: tovar bor, qoldiq faqat asosiy filialniki.
+    expect((await b.db.select(b.db.branches).get()).map((x) => x.id), contains(branchId));
+    expect((await b.products.byId(p.id))!.stockQty, 7);
+    expect((await b.db.select(b.db.sales).get()).where((s) => s.branchId == branchId).length, 1);
+    b.branch.set(branchId);
+    await b.stock.recompute();
+    expect((await b.products.byId(p.id))!.stockQty, 1);
+    final cashier = (await b.db.select(b.db.users).get()).firstWhere((u) => u.fullName == 'Filial kassiri');
+    expect(cashier.roleIn(branchId), UserRole.cashier);
+    expect(cashier.roleIn(kDefaultBranchId), isNull);
   }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
 }

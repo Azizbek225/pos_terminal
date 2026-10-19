@@ -1,8 +1,11 @@
 import 'package:drift/drift.dart';
 
+import '../../core/branch.dart';
 import '../../core/constants.dart';
+import '../../core/formatters.dart';
 import '../../core/security.dart';
 import '../database.dart';
+import 'activity_repository.dart';
 
 /// Firma va uning hisob-kitob holati (qarzlar ro'yxati uchun).
 class SupplierBalance {
@@ -97,7 +100,12 @@ class PurchaseLineInput {
 
 /// Firmalar, kirim hujjatlari va qarzlar.
 class SupplierRepository {
-  SupplierRepository(this.db, this.deviceId);
+  SupplierRepository(this.db, this.deviceId, {BranchContext? branch, this.activity})
+    : branch = branch ?? BranchContext();
+  final ActivityRepository? activity;
+
+  /// Firmalar umumiy, kirimlar, to'lovlar va qarz esa har bir filialda alohida.
+  final BranchContext branch;
   final AppDatabase db;
   final Future<String> Function() deviceId;
 
@@ -205,16 +213,20 @@ class SupplierRepository {
 
   static const _balanceSql = '''
 SELECT s.*,
-  COALESCE((SELECT SUM(p.total) FROM supplier_purchases p WHERE p.supplier_id = s.id AND p.is_deleted = 0), 0) AS purchased,
-  COALESCE((SELECT SUM(m.amount) FROM supplier_payments m WHERE m.supplier_id = s.id AND m.is_deleted = 0), 0) AS paid,
-  (SELECT MAX(p.doc_date) FROM supplier_purchases p WHERE p.supplier_id = s.id AND p.is_deleted = 0) AS last_at,
-  (SELECT COUNT(*) FROM supplier_purchases p WHERE p.supplier_id = s.id AND p.is_deleted = 0 AND p.kind = 'purchase') AS cnt
+  COALESCE((SELECT SUM(p.total) FROM supplier_purchases p WHERE p.supplier_id = s.id AND p.is_deleted = 0 AND p.branch_id = ?1), 0) AS purchased,
+  COALESCE((SELECT SUM(m.amount) FROM supplier_payments m WHERE m.supplier_id = s.id AND m.is_deleted = 0 AND m.branch_id = ?1), 0) AS paid,
+  (SELECT MAX(p.doc_date) FROM supplier_purchases p WHERE p.supplier_id = s.id AND p.is_deleted = 0 AND p.branch_id = ?1) AS last_at,
+  (SELECT COUNT(*) FROM supplier_purchases p WHERE p.supplier_id = s.id AND p.is_deleted = 0 AND p.kind = 'purchase' AND p.branch_id = ?1) AS cnt
 FROM suppliers s WHERE s.is_deleted = 0''';
 
   /// Barcha firmalar balansi bilan: avval eng ko'p qarz.
-  Stream<List<SupplierBalance>> watchBalances() {
+  Stream<List<SupplierBalance>> watchBalances() => watchInBranch(branch, _watchBalances);
+
+  Stream<List<SupplierBalance>> _watchBalances(String branchId) {
     return db
-        .customSelect(_balanceSql, readsFrom: {db.suppliers, db.supplierPurchases, db.supplierPayments})
+        .customSelect(_balanceSql,
+            variables: [Variable.withString(branchId)],
+            readsFrom: {db.suppliers, db.supplierPurchases, db.supplierPayments})
         .watch()
         .map((rows) {
           final list = rows
@@ -243,8 +255,8 @@ FROM suppliers s WHERE s.is_deleted = 0''';
       final paidToday = await db
           .customSelect(
             'SELECT COALESCE(SUM(amount), 0) AS s FROM supplier_payments '
-            'WHERE is_deleted = 0 AND amount > 0 AND paid_at >= ?',
-            variables: [Variable.withInt(today)],
+            'WHERE is_deleted = 0 AND amount > 0 AND paid_at >= ? AND branch_id = ?',
+            variables: [Variable.withInt(today), Variable.withString(branch.id)],
           )
           .getSingle();
       var debt = 0, advance = 0, n = 0;
@@ -265,9 +277,9 @@ FROM suppliers s WHERE s.is_deleted = 0''';
     final r = await db
         .customSelect(
           'SELECT '
-          '(SELECT COALESCE(SUM(total), 0) FROM supplier_purchases WHERE supplier_id = ? AND is_deleted = 0) - '
-          '(SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE supplier_id = ? AND is_deleted = 0) AS b',
-          variables: [Variable.withString(supplierId), Variable.withString(supplierId)],
+          '(SELECT COALESCE(SUM(total), 0) FROM supplier_purchases WHERE supplier_id = ?1 AND is_deleted = 0 AND branch_id = ?2) - '
+          '(SELECT COALESCE(SUM(amount), 0) FROM supplier_payments WHERE supplier_id = ?1 AND is_deleted = 0 AND branch_id = ?2) AS b',
+          variables: [Variable.withString(supplierId), Variable.withString(branch.id)],
         )
         .getSingle();
     return r.read<int>('b');
@@ -277,19 +289,19 @@ FROM suppliers s WHERE s.is_deleted = 0''';
   //  Kirimlar va to'lovlar
   // --------------------------------------------------------------------------
 
-  Stream<List<SupplierPurchase>> watchPurchases(String supplierId) {
+  Stream<List<SupplierPurchase>> watchPurchases(String supplierId) => watchInBranch(branch, (b) {
     final q = db.select(db.supplierPurchases)
-      ..where((p) => p.supplierId.equals(supplierId) & p.isDeleted.equals(false))
+      ..where((p) => p.supplierId.equals(supplierId) & p.isDeleted.equals(false) & p.branchId.equals(b))
       ..orderBy([(p) => OrderingTerm.desc(p.docDate)]);
     return q.watch();
-  }
+  });
 
-  Stream<List<SupplierPayment>> watchPayments(String supplierId) {
+  Stream<List<SupplierPayment>> watchPayments(String supplierId) => watchInBranch(branch, (b) {
     final q = db.select(db.supplierPayments)
-      ..where((p) => p.supplierId.equals(supplierId) & p.isDeleted.equals(false))
+      ..where((p) => p.supplierId.equals(supplierId) & p.isDeleted.equals(false) & p.branchId.equals(b))
       ..orderBy([(p) => OrderingTerm.desc(p.paidAt)]);
     return q.watch();
-  }
+  });
 
   Stream<SupplierPurchase?> watchPurchase(String id) =>
       (db.select(db.supplierPurchases)..where((p) => p.id.equals(id))).watchSingleOrNull();
@@ -416,6 +428,7 @@ FROM suppliers s WHERE s.is_deleted = 0''';
               createdAt: now,
               updatedAt: now,
               deviceId: Value(dev),
+              branchId: Value(branch.id),
             ),
           );
       for (final l in lines) {
@@ -455,6 +468,10 @@ FROM suppliers s WHERE s.is_deleted = 0''';
         );
       }
     });
+    await activity?.log('supplier_purchase',
+        details: '${supplier.name}: ${PurchaseKind.fromCode(kind.code).label}${docNo.trim().isEmpty ? '' : ' №${docNo.trim()}'}, '
+            '${Fmt.money(sum)}${paidNow > 0 ? ", to'landi ${Fmt.money(paidNow)}" : ''}',
+        refId: pid);
     return pid;
   }
 
@@ -474,6 +491,11 @@ FROM suppliers s WHERE s.is_deleted = 0''';
     bool refund = false,
   }) async {
     if (amount <= 0) throw Exception("To'lov summasini kiriting");
+    final supplier = await byId(supplierId);
+    await activity?.log('supplier_payment',
+        details: '${supplier?.name ?? ''}: ${refund ? 'firma qaytardi ' : ''}${Fmt.money(amount)}'
+            '${receivedBy.trim().isEmpty ? '' : ', oldi: ${receivedBy.trim()}'}',
+        refId: supplierId);
     return _insertPayment(
       supplierId: supplierId,
       purchaseId: purchaseId,
@@ -523,6 +545,7 @@ FROM suppliers s WHERE s.is_deleted = 0''';
             createdAt: now,
             updatedAt: now,
             deviceId: Value(dev),
+            branchId: Value(branch.id),
           ),
         );
     return id;

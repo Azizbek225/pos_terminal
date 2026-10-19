@@ -5,7 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'app.dart';
+import 'core/branch.dart';
+import 'core/constants.dart';
 import 'data/database.dart';
+import 'data/repositories/settings_repository.dart';
 import 'services/notification_service.dart';
 import 'services/product_images.dart';
 import 'state/providers.dart';
@@ -27,6 +30,10 @@ Future<void> main() async {
 
   // Lokal baza — internetga bog'liq emas, ilova har doim shu bilan ishlaydi.
   final db = AppDatabase();
+  // Qurilma qaysi filialda ishlayotgani (birinchi kadrdan oldin — savdo noto'g'ri
+  // filialga yozilmasligi uchun).
+  final branchId = await SettingsRepository(db).get(SettingKeys.branchId);
+  final branch = BranchContext(branchId == null || branchId.isEmpty ? kDefaultBranchId : branchId);
   final notifications = NotificationService();
   await notifications.init();
   await ProductImages.init();
@@ -34,6 +41,7 @@ Future<void> main() async {
   runApp(ProviderScope(
     overrides: [
       databaseProvider.overrideWithValue(db),
+      branchContextProvider.overrideWithValue(branch),
       notificationServiceProvider.overrideWithValue(notifications),
     ],
     child: const PosApp(),

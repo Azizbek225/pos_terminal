@@ -1,8 +1,10 @@
 import 'package:drift/drift.dart';
 
+import '../../core/branch.dart';
 import '../../core/constants.dart';
 import '../../core/security.dart';
 import '../database.dart';
+import 'activity_repository.dart';
 
 class AuthException implements Exception {
   AuthException(this.message);
@@ -13,9 +15,11 @@ class AuthException implements Exception {
 
 /// Foydalanuvchilar va audit jurnali.
 class UserRepository {
-  UserRepository(this.db, this.deviceId);
+  UserRepository(this.db, this.deviceId, {BranchContext? branch, this.activity}) : branch = branch ?? BranchContext();
   final AppDatabase db;
   final Future<String> Function() deviceId;
+  final BranchContext branch;
+  final ActivityRepository? activity;
 
   /// Login. Muvaffaqiyatsiz bo'lsa [AuthException].
   Future<User> login(String username, String password) async {
@@ -32,10 +36,11 @@ class UserRepository {
     return u;
   }
 
-  /// Admin huquqini tasdiqlash (masalan, 20% dan yuqori chegirma uchun).
+  /// Admin huquqini tasdiqlash (masalan, 20% dan yuqori chegirma uchun) —
+  /// joriy filialda Admin bo'lishi kerak.
   Future<User> verifyAdmin(String username, String password) async {
     final u = await login(username, password);
-    if (UserRole.fromCode(u.role) != UserRole.admin) {
+    if (u.roleIn(branch.id) != UserRole.admin) {
       throw AuthException('Bu amal uchun Admin huquqi kerak');
     }
     return u;
@@ -59,6 +64,7 @@ class UserRepository {
     String? password,
     String? phone,
     bool isActive = true,
+    Map<String, String>? branchRoles,
   }) async {
     final uname = username.trim().toLowerCase();
     if (uname.length < 3) throw AuthException("Login kamida 3 ta belgidan iborat bo'lsin");
@@ -83,14 +89,23 @@ class UserRepository {
             salt: salt,
             phone: Value(phone),
             isActive: Value(isActive),
+            branchRoles: Value(encodeBranchRoles(branchRoles ?? const {})),
             createdAt: now,
             updatedAt: now,
             deviceId: Value(dev),
           ));
+      await activity?.log('user_created', details: '${fullName.trim()} ($uname, ${role.label})', global: true);
       return;
     }
     final existing = await byId(id);
     if (existing == null) throw AuthException('Foydalanuvchi topilmadi');
+    final willBeOwner = role == UserRole.admin && isActive && (branchRoles ?? existing.branchRoleMap).isEmpty;
+    if (existing.isOwner && existing.isActive && !willBeOwner) {
+      final owners = (await all()).where((x) => x.isOwner && x.isActive).length;
+      if (owners <= 1) {
+        throw AuthException("Kamida bitta bosh admin (barcha filiallarda Admin) qolishi kerak");
+      }
+    }
     var comp = UsersCompanion(
       username: Value(uname),
       fullName: Value(fullName.trim()),
@@ -101,6 +116,7 @@ class UserRepository {
       version: Value(existing.version + 1),
       deviceId: Value(dev),
       dirty: const Value(true),
+      branchRoles: branchRoles == null ? const Value.absent() : Value(encodeBranchRoles(branchRoles)),
     );
     if (password != null && password.isNotEmpty) {
       if (password.length < 4) throw AuthException("Parol kamida 4 ta belgidan iborat bo'lsin");
@@ -108,6 +124,10 @@ class UserRepository {
       comp = comp.copyWith(passwordHash: Value(PasswordHasher.hash(password, salt)), salt: Value(salt));
     }
     await (db.update(db.users)..where((t) => t.id.equals(id))).write(comp);
+    await activity?.log('user_updated',
+        details: '${fullName.trim()} ($uname)${password != null && password.isNotEmpty ? ', parol yangilandi' : ''}',
+        refId: id,
+        global: true);
   }
 
   /// Oxirgi faol Admin o'chirilishiga yo'l qo'ymaslik.
@@ -125,6 +145,7 @@ class UserRepository {
       version: Value(u.version + 1),
       dirty: const Value(true),
     ));
+    await activity?.log('user_deleted', details: u.fullName, refId: id, global: true);
   }
 
   /// Audit jurnaliga yozish.
@@ -136,6 +157,7 @@ class UserRepository {
           userName: user.fullName,
           action: action,
           details: Value(details),
+          branchId: Value(branch.id),
           createdAt: now,
           updatedAt: now,
           deviceId: Value(await deviceId()),

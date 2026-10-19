@@ -1,7 +1,9 @@
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:pos_terminal/core/branch.dart';
 import 'package:pos_terminal/core/constants.dart';
 import 'package:pos_terminal/data/database.dart';
+import 'package:pos_terminal/data/repositories/activity_repository.dart';
 import 'package:pos_terminal/data/repositories/alert_repository.dart';
 import 'package:pos_terminal/data/repositories/product_repository.dart';
 import 'package:pos_terminal/data/repositories/sale_repository.dart';
@@ -19,11 +21,12 @@ class TestEnv {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     settings = SettingsRepository(db);
     Future<String> dev() => settings.deviceId();
-    products = ProductRepository(db, dev);
-    stock = StockRepository(db, dev);
-    users = UserRepository(db, dev);
-    sales = SaleRepository(db);
-    stats = StatsRepository(db);
+    activity = ActivityRepository(db, dev, branch: branch, currentUser: () => actor);
+    products = ProductRepository(db, dev, activity: activity);
+    stock = StockRepository(db, dev, branch: branch);
+    users = UserRepository(db, dev, branch: branch, activity: activity);
+    sales = SaleRepository(db, branch: branch);
+    stats = StatsRepository(db, branch: branch);
     alertsRepo = AlertRepository(db);
     alerts = AlertService(
       alerts: alertsRepo,
@@ -44,6 +47,11 @@ class TestEnv {
   }
 
   final AppDatabase db;
+  final branch = BranchContext();
+
+  /// Jurnalga yoziladigan "joriy" xodim.
+  User? actor;
+  late final ActivityRepository activity;
   late final SettingsRepository settings;
   late final ProductRepository products;
   late final StockRepository stock;

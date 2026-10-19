@@ -11,6 +11,7 @@ import '../../services/sync/server_discovery.dart';
 import '../../core/formatters.dart';
 import '../../state/providers.dart';
 import '../shell/common_widgets.dart';
+import 'branches_section.dart';
 
 /// Sozlamalar: do'kon, printerlar, alertlar, sinxronlash, ko'rinish, ma'lumotlar.
 class SettingsPage extends ConsumerWidget {
@@ -27,6 +28,10 @@ class SettingsPage extends ConsumerWidget {
         children: [
           _StoreSection(values: s),
           const SizedBox(height: 16),
+          if (ref.watch(isOwnerProvider)) ...[
+            const BranchesSection(),
+            const SizedBox(height: 16),
+          ],
           const _PrintersSection(),
           const SizedBox(height: 16),
           _AlertsSection(values: s),

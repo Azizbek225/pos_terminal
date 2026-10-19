@@ -16,6 +16,7 @@ class SettingKeys {
 
   static const deviceId = 'device.id';
   static const deviceCode = 'device.code'; // Chek raqami prefiksi: K1, K2, T1...
+  static const branchId = 'device.branch'; // Qurilmaning joriy filiali
 
   static const dailyTarget = 'target.daily';
   static const targetCheckHour = 'target.checkHour';

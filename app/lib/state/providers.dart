@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/branch.dart';
 import '../core/constants.dart';
 import '../core/formatters.dart';
 import '../core/season.dart';
 import '../data/database.dart';
+import '../data/repositories/activity_repository.dart';
 import '../data/repositories/alert_repository.dart';
+import '../data/repositories/branch_repository.dart';
 import '../data/repositories/product_repository.dart';
 import '../data/repositories/sale_repository.dart';
 import '../data/repositories/settings_repository.dart';
@@ -27,6 +30,9 @@ import 'cart.dart';
 final databaseProvider = Provider<AppDatabase>((ref) => throw UnimplementedError('main.dart da override qiling'));
 final notificationServiceProvider = Provider<NotificationService>((ref) => NotificationService());
 
+/// Qurilmaning joriy filiali (main.dart da sozlamadan o'qilib override qilinadi).
+final branchContextProvider = Provider<BranchContext>((ref) => BranchContext());
+
 // ============================================================================
 //  Repository'lar
 // ============================================================================
@@ -35,12 +41,25 @@ final settingsRepoProvider = Provider((ref) => SettingsRepository(ref.watch(data
 
 Future<String> Function() _deviceId(Ref ref) => () => ref.read(settingsRepoProvider).deviceId();
 
-final productRepoProvider = Provider((ref) => ProductRepository(ref.watch(databaseProvider), _deviceId(ref)));
-final stockRepoProvider = Provider((ref) => StockRepository(ref.watch(databaseProvider), _deviceId(ref)));
-final supplierRepoProvider = Provider((ref) => SupplierRepository(ref.watch(databaseProvider), _deviceId(ref)));
-final userRepoProvider = Provider((ref) => UserRepository(ref.watch(databaseProvider), _deviceId(ref)));
-final saleRepoProvider = Provider((ref) => SaleRepository(ref.watch(databaseProvider)));
-final statsRepoProvider = Provider((ref) => StatsRepository(ref.watch(databaseProvider)));
+final activityRepoProvider = Provider((ref) => ActivityRepository(
+      ref.watch(databaseProvider),
+      _deviceId(ref),
+      branch: ref.watch(branchContextProvider),
+      currentUser: () => ref.read(authProvider),
+    ));
+final branchRepoProvider = Provider((ref) => BranchRepository(ref.watch(databaseProvider), _deviceId(ref)));
+final productRepoProvider = Provider(
+    (ref) => ProductRepository(ref.watch(databaseProvider), _deviceId(ref), activity: ref.watch(activityRepoProvider)));
+final stockRepoProvider =
+    Provider((ref) => StockRepository(ref.watch(databaseProvider), _deviceId(ref), branch: ref.watch(branchContextProvider)));
+final supplierRepoProvider = Provider((ref) => SupplierRepository(ref.watch(databaseProvider), _deviceId(ref),
+    branch: ref.watch(branchContextProvider), activity: ref.watch(activityRepoProvider)));
+final userRepoProvider = Provider((ref) => UserRepository(ref.watch(databaseProvider), _deviceId(ref),
+    branch: ref.watch(branchContextProvider), activity: ref.watch(activityRepoProvider)));
+final saleRepoProvider =
+    Provider((ref) => SaleRepository(ref.watch(databaseProvider), branch: ref.watch(branchContextProvider)));
+final statsRepoProvider =
+    Provider((ref) => StatsRepository(ref.watch(databaseProvider), branch: ref.watch(branchContextProvider)));
 final alertRepoProvider = Provider((ref) => AlertRepository(ref.watch(databaseProvider)));
 
 // ============================================================================
@@ -114,8 +133,25 @@ class AuthNotifier extends Notifier<User?> {
   @override
   User? build() => null;
 
+  /// Xodim ma'lumoti (ruxsatlari) boshqa qurilmada o'zgarsa — sinxronlashdan keyin.
+  void refresh(List<User> users) {
+    final u = state;
+    final fresh = users.where((x) => x.id == u?.id).firstOrNull;
+    if (u != null && fresh != null && fresh != u) state = fresh;
+  }
+
+  /// Login. Xodimga joriy filialda ruxsat bo'lmasa — ruxsati bor birinchi
+  /// faol filialga o'tiladi; hech qaysi filialga ruxsat bo'lmasa — xato.
   Future<void> login(String username, String password) async {
-    state = await ref.read(userRepoProvider).login(username, password);
+    final u = await ref.read(userRepoProvider).login(username, password);
+    final current = ref.read(branchContextProvider).id;
+    if (!u.canAccess(current)) {
+      final branches = await ref.read(branchRepoProvider).all();
+      final allowed = branches.where((b) => b.isActive && u.canAccess(b.id)).firstOrNull;
+      if (allowed == null) throw AuthException("Sizga hech qaysi filialda ruxsat berilmagan");
+      await ref.read(currentBranchProvider.notifier).select(allowed.id);
+    }
+    state = u;
   }
 
   void logout() {
@@ -123,14 +159,59 @@ class AuthNotifier extends Notifier<User?> {
     state = null;
   }
 
-  bool get isAdmin => state != null && UserRole.fromCode(state!.role) == UserRole.admin;
+  bool get isAdmin => state?.roleIn(ref.read(branchContextProvider).id) == UserRole.admin;
 }
 
 final authProvider = NotifierProvider<AuthNotifier, User?>(AuthNotifier.new);
 
+/// Joriy foydalanuvchining **joriy filialdagi** roli.
 final currentRoleProvider = Provider<UserRole?>((ref) {
   final u = ref.watch(authProvider);
-  return u == null ? null : UserRole.fromCode(u.role);
+  final branch = ref.watch(currentBranchProvider);
+  return u?.roleIn(branch);
+});
+
+/// Bosh admin (barcha filiallarda Admin): filiallar va xodimlarni boshqaradi.
+final isOwnerProvider = Provider<bool>((ref) => ref.watch(authProvider)?.isOwner ?? false);
+
+// ============================================================================
+//  Filiallar
+// ============================================================================
+
+final branchesProvider = StreamProvider<List<Branch>>((ref) => ref.watch(branchRepoProvider).watchAll());
+
+/// Joriy foydalanuvchi ko'ra oladigan faol filiallar.
+final accessibleBranchesProvider = Provider<List<Branch>>((ref) {
+  final u = ref.watch(authProvider);
+  final all = ref.watch(branchesProvider).value ?? const <Branch>[];
+  if (u == null) return const [];
+  return [for (final b in all) if (b.isActive && u.canAccess(b.id)) b];
+});
+
+/// Joriy filial ID si. Almashtirish: qoldiq keshi va mavsumiy statistika shu
+/// filial uchun qayta hisoblanadi, savat tozalanadi.
+class CurrentBranchNotifier extends Notifier<String> {
+  @override
+  String build() => ref.watch(branchContextProvider).id;
+
+  Future<void> select(String branchId) async {
+    if (branchId == state) return;
+    final ctx = ref.read(branchContextProvider);
+    ref.read(cartProvider.notifier).clear();
+    ctx.set(branchId);
+    await ref.read(settingsRepoProvider).set(SettingKeys.branchId, branchId);
+    await ref.read(stockRepoProvider).recompute();
+    await ref.read(statsRepoProvider).rebuildSeasonal();
+    state = branchId;
+  }
+}
+
+final currentBranchProvider = NotifierProvider<CurrentBranchNotifier, String>(CurrentBranchNotifier.new);
+
+final currentBranchNameProvider = Provider<String>((ref) {
+  final id = ref.watch(currentBranchProvider);
+  final list = ref.watch(branchesProvider).value ?? const <Branch>[];
+  return list.where((b) => b.id == id).firstOrNull?.name ?? '';
 });
 
 // ============================================================================
