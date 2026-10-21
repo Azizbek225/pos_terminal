@@ -53,8 +53,6 @@ dependencies:
   image_picker: ^1.2.4
   camera: ^0.12.1
   camera_windows: ^0.3.0
-  pdf: ^3.13.1
-  printing: ^5.15.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

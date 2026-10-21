@@ -9,7 +9,6 @@
 #include <camera_windows/camera_windows.h>
 #include <file_selector_windows/file_selector_windows.h>
 #include <print_bluetooth_thermal/print_bluetooth_thermal_plugin_c_api.h>
-#include <printing/printing_plugin.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   CameraWindowsRegisterWithRegistrar(
@@ -18,6 +17,4 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("FileSelectorWindows"));
   PrintBluetoothThermalPluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("PrintBluetoothThermalPluginCApi"));
-  PrintingPluginRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("PrintingPlugin"));
 }

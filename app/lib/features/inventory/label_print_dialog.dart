@@ -3,21 +3,20 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:printing/printing.dart';
 
-import '../../services/printing/label_pdf.dart';
+import '../../core/formatters.dart';
+import '../../services/printing/label.dart';
 import '../../services/printing/printer_config.dart';
 import '../../state/providers.dart';
 import '../shell/common_widgets.dart';
 
-/// Yorliq chop etish faqat kompyuterda (tizim printeri orqali).
+/// Yorliq chop etish faqat kompyuterda.
 bool get labelPrintSupported => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
-const _kSize = 'label.size';
 const _kKind = 'label.kind';
 const _kName = 'label.showName';
 const _kPrice = 'label.showPrice';
-const _kTarget = 'label.printer'; // 1 | 2 | 0 (tizim oynasi)
+const _kTarget = 'label.printer'; // 1 | 2
 
 /// Tovar uchun shtrix/QR-kodli yorliqlarni chop etish oynasi.
 Future<void> showLabelPrintDialog(BuildContext context, LabelData data) =>
@@ -33,13 +32,12 @@ class _LabelPrintDialog extends ConsumerStatefulWidget {
 
 class _LabelPrintDialogState extends ConsumerState<_LabelPrintDialog> {
   final _count = TextEditingController(text: '1');
-  LabelSize _size = LabelSize.s58x40;
   LabelCodeKind _kind = LabelCodeKind.barcode;
   bool _showName = true;
   bool _showPrice = true;
   bool _printing = false;
 
-  /// 1 yoki 2 — sozlamalardagi printer; 0 — Windows chop etish oynasida tanlash.
+  /// Sozlamalardagi 1- yoki 2-printer.
   int _target = 2;
   final _configs = <int, PrinterConfig>{};
 
@@ -51,7 +49,7 @@ class _LabelPrintDialogState extends ConsumerState<_LabelPrintDialog> {
 
   Future<void> _load() async {
     final s = ref.read(settingsRepoProvider);
-    final size = await s.get(_kSize), kind = await s.get(_kKind);
+    final kind = await s.get(_kKind);
     final name = await s.get(_kName), price = await s.get(_kPrice);
     final target = int.tryParse(await s.get(_kTarget) ?? '');
     final printers = ref.read(printerServiceProvider);
@@ -61,8 +59,7 @@ class _LabelPrintDialogState extends ConsumerState<_LabelPrintDialog> {
       _configs
         ..[1] = c1
         ..[2] = c2;
-      _target = target ?? 2;
-      _size = LabelSize.fromCode(size);
+      _target = target == 1 ? 1 : 2;
       _kind = LabelCodeKind.fromCode(kind);
       _showName = name != '0';
       _showPrice = price != '0';
@@ -77,21 +74,13 @@ class _LabelPrintDialogState extends ConsumerState<_LabelPrintDialog> {
 
   int get _n => int.tryParse(_count.text.trim()) ?? 0;
 
-  /// USB/tizim printeri yoki Windows oynasi — PDF (o'lcham tanlanadi);
-  /// tarmoq/Bluetooth termoprinter — ESC/POS (qog'oz kengligi printerniki).
-  bool get _usesPdf {
-    if (_target == 0) return true;
-    final c = _configs[_target];
-    return c == null || (c.connection == PrinterConnection.system && !c.address.startsWith('/dev/'));
-  }
-
   String _printerTitle(int slot) {
     final c = _configs[slot];
     if (c == null || !c.enabled) return '$slot-printer (sozlanmagan)';
     return '$slot-printer: ${c.name.isEmpty ? c.address : c.name}';
   }
 
-  bool get _ready => _target == 0 || (_configs[_target]?.enabled ?? false);
+  bool get _ready => _configs[_target]?.enabled ?? false;
 
   Future<void> _print() async {
     final n = _n;
@@ -102,40 +91,14 @@ class _LabelPrintDialogState extends ConsumerState<_LabelPrintDialog> {
     setState(() => _printing = true);
     try {
       await ref.read(settingsRepoProvider).setAll({
-        _kSize: _size.code,
         _kKind: _kind.code,
         _kName: _showName ? '1' : '0',
         _kPrice: _showPrice ? '1' : '0',
         _kTarget: '$_target',
       });
-      if (_target == 0) {
-        final bytes = await LabelPdf.build(
-          widget.data,
-          count: n,
-          size: _size,
-          kind: _kind,
-          showName: _showName,
-          showPrice: _showPrice,
-        );
-        final ok = await Printing.layoutPdf(
-          name: 'Yorliq ${widget.data.code}',
-          format: _size.pageFormat,
-          onLayout: (_) async => bytes,
-        );
-        if (!ok) return;
-      } else {
-        await ref
-            .read(printerServiceProvider)
-            .printLabels(
-              _target,
-              widget.data,
-              count: n,
-              size: _size,
-              kind: _kind,
-              showName: _showName,
-              showPrice: _showPrice,
-            );
-      }
+      await ref
+          .read(printerServiceProvider)
+          .printLabels(_target, widget.data, count: n, kind: _kind, showName: _showName, showPrice: _showPrice);
       if (mounted) {
         showMessage(context, '$n ta yorliq chop etishga yuborildi');
         Navigator.pop(context);
@@ -149,7 +112,7 @@ class _LabelPrintDialogState extends ConsumerState<_LabelPrintDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final valid = LabelPdf.canEncode(widget.data.code, _kind);
+    final valid = LabelData.canEncode(widget.data.code, _kind);
     return AlertDialog(
       title: const Text('Yorliq chop etish'),
       content: SizedBox(
@@ -168,11 +131,10 @@ class _LabelPrintDialogState extends ConsumerState<_LabelPrintDialog> {
                 decoration: const InputDecoration(labelText: 'Printer', prefixIcon: Icon(Icons.print_outlined)),
                 items: [
                   for (final slot in [2, 1]) DropdownMenuItem(value: slot, child: Text(_printerTitle(slot))),
-                  const DropdownMenuItem(value: 0, child: Text('Boshqa printer (Windows oynasida tanlash)')),
                 ],
                 onChanged: (v) => setState(() => _target = v ?? _target),
               ),
-              if (_target != 0 && !(_configs[_target]?.enabled ?? false))
+              if (_configs.isNotEmpty && !_ready)
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
@@ -196,17 +158,7 @@ class _LabelPrintDialogState extends ConsumerState<_LabelPrintDialog> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  if (_usesPdf)
-                    Expanded(
-                      child: DropdownButtonFormField<LabelSize>(
-                        initialValue: _size,
-                        isExpanded: true,
-                        decoration: const InputDecoration(labelText: "Yorliq o'lchami"),
-                        items: [for (final s in LabelSize.values) DropdownMenuItem(value: s, child: Text(s.label))],
-                        onChanged: (v) => setState(() => _size = v ?? _size),
-                      ),
-                    ),
-                  if (_usesPdf) const SizedBox(width: 12) else const Spacer(),
+                  const Spacer(),
                   SizedBox(
                     width: 150,
                     child: TextField(
@@ -250,31 +202,7 @@ class _LabelPrintDialogState extends ConsumerState<_LabelPrintDialog> {
                   style: TextStyle(color: Theme.of(context).colorScheme.error),
                 )
               else
-                Container(
-                  height: 200,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Theme.of(context).dividerColor),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: PdfPreview(
-                    key: ValueKey('${_size.code}${_kind.code}$_showName$_showPrice'),
-                    build: (_) => LabelPdf.build(
-                      widget.data,
-                      count: 1,
-                      size: _size,
-                      kind: _kind,
-                      showName: _showName,
-                      showPrice: _showPrice,
-                    ),
-                    useActions: false,
-                    canChangePageFormat: false,
-                    canChangeOrientation: false,
-                    canDebug: false,
-                    maxPageWidth: 400,
-                    pdfPreviewPageDecoration: const BoxDecoration(color: Colors.white),
-                  ),
-                ),
+                _Preview(data: widget.data, kind: _kind, showName: _showName, showPrice: _showPrice),
             ],
           ),
         ),
@@ -289,6 +217,47 @@ class _LabelPrintDialogState extends ConsumerState<_LabelPrintDialog> {
           label: Text('Chop etish ($_n ta)'),
         ),
       ],
+    );
+  }
+}
+
+/// Yorliqning taxminiy ko'rinishi (printer chiqaradigan tartibda).
+class _Preview extends StatelessWidget {
+  const _Preview({required this.data, required this.kind, required this.showName, required this.showPrice});
+  final LabelData data;
+  final LabelCodeKind kind;
+  final bool showName;
+  final bool showPrice;
+
+  @override
+  Widget build(BuildContext context) {
+    const ink = TextStyle(color: Colors.black);
+    return Center(
+      child: Container(
+        width: 240,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black26),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (showName && data.name.isNotEmpty)
+              Text(
+                data.name,
+                textAlign: TextAlign.center,
+                style: ink.copyWith(fontWeight: FontWeight.bold),
+              ),
+            if (showPrice && data.price > 0)
+              Text(Fmt.money(data.price), style: ink.copyWith(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Icon(kind == LabelCodeKind.qr ? Icons.qr_code_2 : Icons.view_week, size: 64, color: Colors.black),
+            Text(data.code, style: ink.copyWith(fontSize: 12, letterSpacing: 1)),
+          ],
+        ),
+      ),
     );
   }
 }

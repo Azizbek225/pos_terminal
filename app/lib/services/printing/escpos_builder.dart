@@ -1,7 +1,7 @@
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 
 import '../../core/formatters.dart';
-import 'label_pdf.dart';
+import 'label.dart';
 import 'printer_config.dart';
 import 'receipt_layout.dart';
 

@@ -10,7 +10,7 @@ import '../../core/formatters.dart';
 import '../../core/season.dart';
 import '../../data/database.dart';
 import '../../data/repositories/stock_repository.dart';
-import '../../services/printing/label_pdf.dart';
+import '../../services/printing/label.dart';
 import '../../services/product_images.dart';
 import '../../services/scanner/camera_scanner.dart';
 import '../../state/providers.dart';

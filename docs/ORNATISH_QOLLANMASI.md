@@ -341,7 +341,7 @@ Telefon chekni Bluetooth'siz, **PosServer.exe** orqali kompyuterga ulangan print
 
 ### 7.6. Tovar yorlig'i (shtrix/QR-kod, kompyuterda)
 Tovar kartasida shtrix-kod yonidagi 🖨 tugmasi: shtrix yoki QR, soni, o'lcham, nom va narx tanlanadi.
-Standart holatda **2-printer**ga chiqadi (USB/Windows printeri — PDF, termoprinter — ESC/POS).
+Standart holatda **2-printer**ga chiqadi (chek termoprinteri: USB, Wi-Fi, Bluetooth yoki server orqali).
 
 ### 7.7. Chek matni
 Ko'p arzon termoprinterlarda o'zbek harflari (oʻ, gʻ) yo'q. Ilova chekdagi matnni avtomatik

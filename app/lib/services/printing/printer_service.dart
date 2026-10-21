@@ -6,13 +6,12 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
-import 'package:printing/printing.dart';
 
 import '../../core/constants.dart';
 import '../../data/repositories/sale_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import 'escpos_builder.dart';
-import 'label_pdf.dart';
+import 'label.dart';
 import 'printer_config.dart';
 import 'receipt_layout.dart';
 import 'windows_raw_printer.dart';
@@ -101,46 +100,21 @@ class PrinterService {
     await send(cfg, await EscPosBuilder.testPage(cfg));
   }
 
-  /// Tovar yorliqlarini [slot]-printerga chop etish. USB/tizim printeri —
-  /// PDF orqali (yorliq printeri drayveri o'lchamni o'zi biladi), tarmoq va
-  /// Bluetooth termoprinter — ESC/POS shtrix/QR buyruqlari bilan.
+  /// Tovar yorliqlarini [slot]-printerga chop etish: ESC/POS shtrix/QR
+  /// buyruqlari printerning o'z ulanishi (USB, tarmoq, Bluetooth, server)
+  /// orqali yuboriladi.
   Future<void> printLabels(
     int slot,
     LabelData data, {
     required int count,
-    LabelSize size = LabelSize.s58x40,
     LabelCodeKind kind = LabelCodeKind.barcode,
     bool showName = true,
     bool showPrice = true,
   }) async {
     final cfg = await config(slot);
     if (!cfg.enabled) throw PrintException('$slot-printer sozlanmagan (Sozlamalar → Printerlar)');
-    if (cfg.connection == PrinterConnection.system && !cfg.address.startsWith('/dev/')) {
-      final pdf = await LabelPdf.build(
-        data,
-        count: count,
-        size: size,
-        kind: kind,
-        showName: showName,
-        showPrice: showPrice,
-      );
-      final ok = await Printing.directPrintPdf(
-        printer: Printer(url: cfg.address.trim(), name: cfg.address.trim()),
-        name: 'Yorliq ${data.code}',
-        format: size.pageFormat,
-        onLayout: (_) async => pdf,
-      );
-      if (!ok) throw PrintException('"${cfg.address}" printeriga yuborib bo\'lmadi');
-      return;
-    }
-    final bytes = await EscPosBuilder.labels(
-      data,
-      cfg,
-      count: count,
-      kind: kind,
-      showName: showName,
-      showPrice: showPrice,
-    );
+    final bytes = await EscPosBuilder.labels(data, cfg,
+        count: count, kind: kind, showName: showName, showPrice: showPrice);
     await send(cfg, bytes);
   }
 
