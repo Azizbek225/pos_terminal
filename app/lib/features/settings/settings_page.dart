@@ -321,10 +321,19 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
         _found = list.map((e) => '${e.$1}|${e.$2}').toList();
       } else if (_cfg.connection == PrinterConnection.system) {
         _found = await service.systemPrinters();
+      } else if (_cfg.connection == PrinterConnection.server) {
+        _found = await service.serverPrinters();
       }
       if (_found.isEmpty && mounted) {
-        showMessage(context, 'Printer topilmadi. Bluetooth printerni avval telefon sozlamalarida juftlang.');
+        showMessage(
+          context,
+          _cfg.connection == PrinterConnection.server
+              ? 'Kompyuterda printer topilmadi. Printer Windows\'ga o\'rnatilganini tekshiring.'
+              : 'Printer topilmadi. Bluetooth printerni avval telefon sozlamalarida juftlang.',
+        );
       }
+    } catch (e) {
+      if (mounted) showMessage(context, e.toString(), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -342,6 +351,7 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
       PrinterConnection.network => 'IP manzil (masalan 192.168.1.100)',
       PrinterConnection.bluetooth => 'Bluetooth MAC manzil',
       PrinterConnection.system => 'Printer nomi (Windows/macOS/Linux) yoki /dev/usb/lp0',
+      PrinterConnection.server => "Kompyuterdagi printer nomi (🔍 bilan tanlang)",
       PrinterConnection.none => 'Manzil',
     };
     return Card(
@@ -388,7 +398,9 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
                       ),
                     ),
                   ],
-                  if (conn == PrinterConnection.bluetooth || conn == PrinterConnection.system)
+                  if (conn == PrinterConnection.bluetooth ||
+                      conn == PrinterConnection.system ||
+                      conn == PrinterConnection.server)
                     IconButton(
                       tooltip: 'Qidirish',
                       onPressed: _busy ? null : _discover,

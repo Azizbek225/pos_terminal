@@ -331,7 +331,19 @@ drayverdagi shrift/masshtab sozlamalari ta'sir qilmaydi.
 2. Printer IP'si do'kon tarmog'iga mos bo'lmasa, ishlab chiqaruvchi utilitasi bilan o'zgartiring.
 3. Ilovada: **Tarmoq** → IP `192.168.1.87`, port `9100` → **Sinov cheki**.
 
-### 7.5. Chek matni
+### 7.5. Telefondan kompyuter printeriga (server orqali)
+Telefon chekni Bluetooth'siz, **PosServer.exe** orqali kompyuterga ulangan printerdan chiqaradi
+(Wi-Fi yoki Tailscale orqali — internet bo'lsa boshqa joydan ham).
+1. Printer kompyuterga ulangan va Windows'ga o'rnatilgan bo'lsin, PosServer.exe ishlab tursin.
+2. Telefonda sinxronlash ulangan bo'lsin (**Sozlamalar → Sinxronlash**, "Ulanishni tekshirish").
+3. **Sozlamalar → Printerlar → 1-printer** → Ulanish turi: **Kompyuter printeri (server orqali)**.
+4. 🔍 tugmasini bosing — kompyuterdagi printerlar chiqadi, keraklisini tanlang → **Sinov cheki**.
+
+### 7.6. Tovar yorlig'i (shtrix/QR-kod, kompyuterda)
+Tovar kartasida shtrix-kod yonidagi 🖨 tugmasi: shtrix yoki QR, soni, o'lcham, nom va narx tanlanadi.
+Standart holatda **2-printer**ga chiqadi (USB/Windows printeri — PDF, termoprinter — ESC/POS).
+
+### 7.7. Chek matni
 Ko'p arzon termoprinterlarda o'zbek harflari (oʻ, gʻ) yo'q. Ilova chekdagi matnni avtomatik
 oddiy lotin harflariga (o', g') o'giradi, shuning uchun chek har qanday printerda to'g'ri chiqadi.
 Do'kon nomi, manzil, telefon, STIR va chek pastidagi matn: **Sozlamalar → Do'kon va chek**.

@@ -10,7 +10,11 @@ enum PrinterConnection {
 
   /// Kompyuterga USB orqali ulangan va tizimga o'rnatilgan printer
   /// (Windows: spooler RAW, macOS/Linux: CUPS `lp -o raw`, yoki /dev/usb/lp0).
-  system('system', 'USB / tizim printeri');
+  system('system', 'USB / tizim printeri'),
+
+  /// Server (PosServer.exe) turgan kompyuterga ulangan printer: telefon chekni
+  /// sinxronlash serveri orqali yuboradi (Wi-Fi yoki Tailscale orqali).
+  server('server', 'Kompyuter printeri (server orqali)');
 
   const PrinterConnection(this.code, this.label);
   final String code;

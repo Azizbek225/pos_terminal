@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import __version__, sync
+from . import __version__, printers, sync
 from .config import settings
 from .db import Base, engine, get_session
 from .models import Device, SyncRecord
@@ -155,6 +155,29 @@ def download_image(name: str) -> FileResponse:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Rasm topilmadi")
     return FileResponse(path)
+
+
+MAX_PRINT_BYTES = 2 * 1024 * 1024
+
+
+@app.get("/api/printers", dependencies=[Depends(require_key)])
+def list_printers() -> dict:
+    """Server turgan kompyuterdagi printerlar (telefon chekni shu yerga yuboradi)."""
+    return {"printers": printers.list_printers()}
+
+
+@app.post("/api/print", dependencies=[Depends(require_key)])
+async def print_raw(request: Request, printer: Annotated[str, Query(min_length=1, max_length=200)]) -> dict:
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="Bo'sh chek")
+    if len(body) > MAX_PRINT_BYTES:
+        raise HTTPException(status_code=413, detail="Chek juda katta")
+    try:
+        printers.print_raw(printer, body)
+    except printers.PrintError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return {"printed": len(body), "printer": printer}
 
 
 @app.get("/api/reports/daily", dependencies=[Depends(require_key)])
