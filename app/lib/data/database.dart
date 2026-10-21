@@ -173,6 +173,11 @@ class Sales extends Table with SyncColumns {
   TextColumn get note => text().withDefault(const Constant(''))();
   TextColumn get branchId => text().withDefault(const Constant(kDefaultBranchId))(); // Filial (eski yozuvlar — asosiy)
 
+  /// Nasiya: summaning qarzga yozilgan qismi va qarzdor mijoz.
+  IntColumn get debtAmount => integer().withDefault(const Constant(0))();
+  TextColumn get customerId => text().withDefault(const Constant(''))();
+  TextColumn get customerName => text().withDefault(const Constant(''))();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -346,6 +351,39 @@ class SupplierPayments extends Table with SyncColumns {
   Set<Column> get primaryKey => {id};
 }
 
+/// Mijozlar (nasiyaga oluvchilar). Barcha filiallarda umumiy.
+class Customers extends Table with SyncColumns {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get phone => text().withDefault(const Constant(''))();
+  TextColumn get address => text().withDefault(const Constant(''))();
+  TextColumn get note => text().withDefault(const Constant(''))();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Mijoz qarzi daftari. `amount` > 0 — qarz oshdi (nasiya savdo, qo'lda
+/// yozilgan qarz), < 0 — kamaydi (to'lov, chek qaytarilishi).
+/// Qarz = SUM(amount) (filial bo'yicha).
+@DataClassName('CustomerDebt')
+class CustomerDebts extends Table with SyncColumns {
+  TextColumn get id => text()();
+  TextColumn get customerId => text()();
+  TextColumn get kind => text()(); // CustomerDebtKind.code
+  IntColumn get amount => integer()();
+  TextColumn get saleId => text().withDefault(const Constant(''))();
+  TextColumn get method => text().withDefault(const Constant(''))(); // to'lov turi (PaymentType.code)
+  TextColumn get note => text().withDefault(const Constant(''))();
+  TextColumn get userId => text().withDefault(const Constant(''))();
+  TextColumn get userName => text().withDefault(const Constant(''))();
+  TextColumn get branchId => text().withDefault(const Constant(kDefaultBranchId))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Kalit-qiymat sozlamalar (lokal).
 @DataClassName('Setting')
 class Settings extends Table {
@@ -372,12 +410,14 @@ class Settings extends Table {
   SupplierPurchases,
   SupplierPurchaseItems,
   SupplierPayments,
+  Customers,
+  CustomerDebts,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   /// Baza fayli ilovaning shaxsiy papkasida saqlanadi (Hujjatlar papkasida emas —
   /// foydalanuvchi tasodifan o'chirib yubormasligi va bulutli sinxronlash
@@ -425,6 +465,13 @@ class AppDatabase extends _$AppDatabase {
             if (!await _columnExists(t.actualTableName, c.name)) await m.addColumn(t, c);
           }
           await _seedDefaultBranch();
+          // v5: mijozlar va nasiya.
+          for (final t in <TableInfo>[customers, customerDebts]) {
+            if (!await _tableExists(t.actualTableName)) await m.createTable(t);
+          }
+          for (final c in [sales.debtAmount, sales.customerId, sales.customerName]) {
+            if (!await _columnExists('sales', c.name)) await m.addColumn(sales, c);
+          }
           await _createIndexes();
         },
         beforeOpen: (details) async {
@@ -468,6 +515,7 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS idx_purchase_items_product ON supplier_purchase_items(product_id)',
       'CREATE INDEX IF NOT EXISTS idx_supplier_payments_supplier ON supplier_payments(supplier_id, paid_at)',
       'CREATE INDEX IF NOT EXISTS idx_sales_branch ON sales(branch_id, created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_customer_debts_customer ON customer_debts(customer_id, created_at)',
       'CREATE INDEX IF NOT EXISTS idx_movements_branch ON stock_movements(branch_id, product_id)',
       'CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at)',
     ];

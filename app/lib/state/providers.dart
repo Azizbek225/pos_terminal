@@ -14,6 +14,7 @@ import '../data/repositories/sale_repository.dart';
 import '../data/repositories/settings_repository.dart';
 import '../data/repositories/stats_repository.dart';
 import '../data/repositories/stock_repository.dart';
+import '../data/repositories/customer_repository.dart';
 import '../data/repositories/supplier_repository.dart';
 import '../data/repositories/user_repository.dart';
 import '../services/alert_service.dart';
@@ -54,6 +55,8 @@ final stockRepoProvider =
     Provider((ref) => StockRepository(ref.watch(databaseProvider), _deviceId(ref), branch: ref.watch(branchContextProvider)));
 final supplierRepoProvider = Provider((ref) => SupplierRepository(ref.watch(databaseProvider), _deviceId(ref),
     branch: ref.watch(branchContextProvider), activity: ref.watch(activityRepoProvider)));
+final customerRepoProvider = Provider((ref) => CustomerRepository(ref.watch(databaseProvider), _deviceId(ref),
+    branch: ref.watch(branchContextProvider), activity: ref.watch(activityRepoProvider)));
 final userRepoProvider = Provider((ref) => UserRepository(ref.watch(databaseProvider), _deviceId(ref),
     branch: ref.watch(branchContextProvider), activity: ref.watch(activityRepoProvider)));
 final saleRepoProvider =
@@ -86,6 +89,7 @@ final checkoutServiceProvider = Provider((ref) => CheckoutService(
       stats: ref.watch(statsRepoProvider),
       users: ref.watch(userRepoProvider),
       alerts: ref.watch(alertServiceProvider),
+      customers: ref.watch(customerRepoProvider),
     ));
 
 final printerServiceProvider = Provider((ref) => PrinterService(ref.watch(settingsRepoProvider)));
@@ -322,6 +326,18 @@ final supplierBalancesProvider =
     StreamProvider<List<SupplierBalance>>((ref) => ref.watch(supplierRepoProvider).watchBalances());
 
 final debtSummaryProvider = StreamProvider<DebtSummary>((ref) => ref.watch(supplierRepoProvider).watchSummary());
+
+final customersProvider = StreamProvider<List<Customer>>((ref) => ref.watch(customerRepoProvider).watchCustomers());
+final customerBalancesProvider =
+    StreamProvider<List<CustomerBalance>>((ref) => ref.watch(customerRepoProvider).watchBalances());
+final customerDebtSummaryProvider =
+    StreamProvider<CustomerDebtSummary>((ref) => ref.watch(customerRepoProvider).watchSummary());
+final customerProvider =
+    StreamProvider.family<Customer?, String>((ref, id) => ref.watch(customerRepoProvider).watchCustomer(id));
+final customerDebtProvider =
+    StreamProvider.family<int, String>((ref, id) => ref.watch(customerRepoProvider).watchDebt(id));
+final customerLedgerProvider = StreamProvider.family<List<CustomerLedgerEntry>, String>(
+    (ref, id) => ref.watch(customerRepoProvider).watchLedger(id));
 
 final supplierProvider =
     StreamProvider.family<Supplier?, String>((ref, id) => ref.watch(supplierRepoProvider).watchSupplier(id));

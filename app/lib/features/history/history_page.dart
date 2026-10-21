@@ -208,5 +208,6 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         PaymentType.card => Icons.credit_card,
         PaymentType.transfer => Icons.swap_horiz,
         PaymentType.mixed => Icons.call_split,
+        PaymentType.debt => Icons.menu_book_outlined,
       };
 }

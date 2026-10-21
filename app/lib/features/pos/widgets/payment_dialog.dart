@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
+import '../../../data/database.dart';
 import '../../../state/cart.dart';
+import '../../customers/customer_widgets.dart';
 
 class PaymentResult {
   PaymentResult(this.payment, this.print);
@@ -12,7 +15,7 @@ class PaymentResult {
   final bool print;
 }
 
-/// To'lov oynasi: naqd, karta, o'tkazma yoki aralash; qaytim hisoblash.
+/// To'lov oynasi: naqd, karta, o'tkazma, aralash yoki nasiya; qaytim hisoblash.
 Future<PaymentResult?> showPaymentDialog(BuildContext context, {required int total, bool printDefault = true}) {
   return showDialog<PaymentResult>(
     context: context,
@@ -21,21 +24,22 @@ Future<PaymentResult?> showPaymentDialog(BuildContext context, {required int tot
   );
 }
 
-class _PaymentDialog extends StatefulWidget {
+class _PaymentDialog extends ConsumerStatefulWidget {
   const _PaymentDialog({required this.total, required this.printDefault});
   final int total;
   final bool printDefault;
 
   @override
-  State<_PaymentDialog> createState() => _PaymentDialogState();
+  ConsumerState<_PaymentDialog> createState() => _PaymentDialogState();
 }
 
-class _PaymentDialogState extends State<_PaymentDialog> {
+class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
   PaymentType _type = PaymentType.cash;
   final _cash = TextEditingController();
   final _card = TextEditingController();
   final _transfer = TextEditingController();
   late bool _print = widget.printDefault;
+  Customer? _customer;
   String? _error;
 
   @override
@@ -59,17 +63,24 @@ class _PaymentDialogState extends State<_PaymentDialog> {
         PaymentType.card => PaymentInput(card: widget.total),
         PaymentType.transfer => PaymentInput(transfer: widget.total),
         PaymentType.mixed => PaymentInput(cash: _v(_cash), card: _v(_card), transfer: _v(_transfer)),
+        PaymentType.debt => PaymentInput(
+            cash: _v(_cash),
+            card: _v(_card),
+            debt: (widget.total - _v(_cash) - _v(_card)).clamp(0, widget.total),
+            customerId: _customer?.id ?? '',
+            customerName: _customer?.name ?? '',
+          ),
       };
 
-  int get _change => (_input.totalPaid - widget.total).clamp(0, 1 << 40);
-  int get _remaining => (widget.total - _input.totalPaid).clamp(0, 1 << 40);
+  int get _change => (_input.covered - widget.total).clamp(0, 1 << 40);
+  int get _remaining => (widget.total - _input.covered).clamp(0, 1 << 40);
 
   void _setType(PaymentType t) {
     setState(() {
       _type = t;
       _error = null;
       if (t == PaymentType.cash) _cash.text = '${widget.total}';
-      if (t == PaymentType.mixed) {
+      if (t == PaymentType.mixed || t == PaymentType.debt) {
         _cash.text = '';
         _card.text = '';
         _transfer.text = '';
@@ -91,6 +102,10 @@ class _PaymentDialogState extends State<_PaymentDialog> {
 
   void _confirm() {
     final p = _input;
+    if (_type == PaymentType.debt && _customer == null) {
+      setState(() => _error = 'Nasiya uchun mijozni tanlang yoki yangisini qo\'shing');
+      return;
+    }
     if (p.card + p.transfer > widget.total) {
       setState(() => _error = "Karta va o'tkazma summasi chekdan oshmasligi kerak");
       return;
@@ -125,6 +140,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
         const SingleActivator(LogicalKeyboardKey.f2): () => _setType(PaymentType.card),
         const SingleActivator(LogicalKeyboardKey.f3): () => _setType(PaymentType.transfer),
         const SingleActivator(LogicalKeyboardKey.f4): () => _setType(PaymentType.mixed),
+        const SingleActivator(LogicalKeyboardKey.f5): () => _setType(PaymentType.debt),
       },
       child: AlertDialog(
         title: const Text("To'lov"),
@@ -154,6 +170,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                     (PaymentType.card, 'Karta', Icons.credit_card),
                     (PaymentType.transfer, "O'tkazma", Icons.swap_horiz),
                     (PaymentType.mixed, 'Aralash', Icons.call_split),
+                    (PaymentType.debt, 'Nasiya', Icons.menu_book_outlined),
                   ])
                     ButtonSegment(
                       value: t,
@@ -195,6 +212,31 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                     style: TextStyle(
                         color: _remaining > 0 ? theme.colorScheme.error : AppTheme.success(context),
                         fontWeight: FontWeight.bold)),
+              ],
+              if (_type == PaymentType.debt) ...[
+                CustomerPicker(selected: _customer, onChanged: (c) => setState(() {
+                  _customer = c;
+                  _error = null;
+                })),
+                const SizedBox(height: 12),
+                field(_cash, 'Hozir naqd to\'laydi', Icons.payments),
+                field(_card, 'Hozir karta bilan to\'laydi', Icons.credit_card),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.menu_book_outlined, color: theme.colorScheme.error),
+                    const SizedBox(width: 8),
+                    const Text('Qarzga yoziladi:', style: TextStyle(fontSize: 18)),
+                    const Spacer(),
+                    Text(Fmt.money(_input.debt),
+                        style: theme.textTheme.headlineSmall
+                            ?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.error)),
+                  ]),
+                ),
               ],
               const SizedBox(height: 12),
               if (_change > 0)

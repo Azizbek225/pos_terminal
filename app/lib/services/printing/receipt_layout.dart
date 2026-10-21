@@ -74,6 +74,10 @@ class ReceiptLayout {
     if (sale.paidCash > 0) lines.add(RLine(_lr('Naqd:', Fmt.money(sale.paidCash), width)));
     if (sale.paidCard > 0) lines.add(RLine(_lr('Karta:', Fmt.money(sale.paidCard), width)));
     if (sale.paidTransfer > 0) lines.add(RLine(_lr("O'tkazma:", Fmt.money(sale.paidTransfer), width)));
+    if (sale.debtAmount > 0) {
+      lines.add(RLine(_lr('Nasiyaga (qarz):', Fmt.money(sale.debtAmount), width), bold: true));
+      if (sale.customerName.isNotEmpty) lines.add(RLine(_lr('Mijoz:', sale.customerName, width)));
+    }
     if (sale.changeAmount > 0) lines.add(RLine(_lr('Qaytim:', Fmt.money(sale.changeAmount), width), bold: true));
     lines.add(RLine(_lr('Tovarlar soni:', Fmt.qty(sale.itemCount), width)));
     lines.add(RLine.separator);

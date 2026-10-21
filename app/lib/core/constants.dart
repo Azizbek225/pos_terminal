@@ -23,7 +23,10 @@ enum PaymentType {
   cash('cash', 'Naqd'),
   card('card', 'Karta'),
   transfer('transfer', "O'tkazma"),
-  mixed('mixed', 'Aralash');
+  mixed('mixed', 'Aralash'),
+
+  /// Nasiya: summaning bir qismi (yoki hammasi) mijoz qarziga yozildi.
+  debt('debt', 'Nasiya');
 
   const PaymentType(this.code, this.label);
   final String code;
@@ -31,6 +34,21 @@ enum PaymentType {
 
   static PaymentType fromCode(String code) =>
       PaymentType.values.firstWhere((p) => p.code == code, orElse: () => PaymentType.cash);
+}
+
+/// Mijoz qarzi daftaridagi yozuv turi.
+enum CustomerDebtKind {
+  sale('sale', 'Nasiya savdo'),
+  manual('manual', 'Qarz yozildi'),
+  payment('payment', "To'lov"),
+  refund('refund', 'Chek qaytarildi');
+
+  const CustomerDebtKind(this.code, this.label);
+  final String code;
+  final String label;
+
+  static CustomerDebtKind fromCode(String? c) =>
+      CustomerDebtKind.values.firstWhere((x) => x.code == c, orElse: () => CustomerDebtKind.manual);
 }
 
 /// Chek holati.
@@ -155,6 +173,8 @@ class SyncEntities {
   static const supplierPurchases = 'supplier_purchases';
   static const supplierPurchaseItems = 'supplier_purchase_items';
   static const supplierPayments = 'supplier_payments';
+  static const customers = 'customers';
+  static const customerDebts = 'customer_debts';
 
   static const all = [
     branches,
@@ -169,5 +189,7 @@ class SyncEntities {
     supplierPurchases,
     supplierPurchaseItems,
     supplierPayments,
+    customers,
+    customerDebts,
   ];
 }

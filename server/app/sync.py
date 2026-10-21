@@ -25,6 +25,8 @@ ENTITIES = (
     "supplier_purchases",
     "supplier_purchase_items",
     "supplier_payments",
+    "customers",
+    "customer_debts",
 )
 
 # O'zgarmas yozuvlar: faqat qo'shiladi, hech qachon yangilanmaydi.

@@ -483,6 +483,12 @@ o'chiring (2–4-bo'limlardagi yo'llar), shunda toza baza bilan boshlanadi.
 
 ---
 
+### 10.1. Nasiya (mijoz qarzlari)
+
+- **Savdoda:** To'lov → **Nasiya** (F5) → mijozni tanlang yoki yangi qo'shing → hozir to'lanadigan naqd/karta summasini kiriting; qolgani mijoz qarziga yoziladi.
+- **Qarzlar → Mijozlar (nasiya):** har bir mijozning qarzi va daftari. "To'lov qabul qilish" — qarzni kamaytiradi; "Qarz yozish" — eski (daftardagi) qarzni kiritish. Xato to'lovni bekor qilish uchun qatorni uzoq bosing.
+- Nasiya chek qaytarilsa, qarz ham avtomatik kamayadi. Mijozlar barcha filiallarda umumiy, qarz esa har filialda alohida.
+
 ## 11. Muammolar va yechimlar
 
 | Muammo | Yechim |

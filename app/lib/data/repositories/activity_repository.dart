@@ -37,6 +37,9 @@ const kActivityLabels = <String, String>{
   'branch_deleted': "Filial o'chirildi",
   'supplier_purchase': 'Firmadan kirim',
   'supplier_payment': "Firmaga to'lov",
+  'customer_saved': "Mijoz qo'shildi",
+  'customer_payment': "Mijoz qarzini to'ladi",
+  'customer_debt': 'Mijozga qarz yozildi',
 };
 
 ActivityKind activityKindOf(String action) {
@@ -45,6 +48,7 @@ ActivityKind activityKindOf(String action) {
   }
   if (action == 'refund' || action == 'discount_approved') return ActivityKind.sale;
   if (action.startsWith('supplier_')) return ActivityKind.supplier;
+  if (action.startsWith('customer_')) return ActivityKind.sale;
   if (action.startsWith('user_') || action.startsWith('branch_') || action == 'login') return ActivityKind.staff;
   return ActivityKind.other;
 }

@@ -2,6 +2,7 @@ import '../core/branch.dart';
 import '../core/constants.dart';
 import '../core/security.dart';
 import '../data/database.dart';
+import '../data/repositories/customer_repository.dart';
 import '../data/repositories/sale_repository.dart';
 import '../data/repositories/settings_repository.dart';
 import '../data/repositories/stats_repository.dart';
@@ -28,6 +29,7 @@ class CheckoutService {
     required this.stats,
     required this.users,
     required this.alerts,
+    this.customers,
   });
 
   final AppDatabase db;
@@ -37,9 +39,11 @@ class CheckoutService {
   final StatsRepository stats;
   final UserRepository users;
   final AlertService alerts;
+  final CustomerRepository? customers;
 
   /// To'lov turini kiritilgan summalardan aniqlash.
   static PaymentType resolvePaymentType(PaymentInput p) {
+    if (p.debt > 0) return PaymentType.debt;
     final parts = [p.cash > 0, p.card > 0, p.transfer > 0].where((x) => x).length;
     if (parts > 1) return PaymentType.mixed;
     if (p.card > 0) return PaymentType.card;
@@ -80,10 +84,14 @@ class CheckoutService {
     if (payment.card + payment.transfer > total) {
       throw CheckoutException("Karta/o'tkazma summasi chek summasidan oshmasligi kerak");
     }
-    if (payment.totalPaid < total) {
+    if (payment.debt < 0 || payment.debt > total) throw CheckoutException("Qarz summasi noto'g'ri");
+    if (payment.debt > 0 && (payment.customerId.isEmpty || customers == null)) {
+      throw CheckoutException('Nasiya uchun mijozni tanlang');
+    }
+    if (payment.covered < total) {
       throw CheckoutException("To'lov yetarli emas");
     }
-    final change = payment.totalPaid - total; // Qaytim faqat naqddan beriladi
+    final change = payment.covered - total; // Qaytim faqat naqddan beriladi
     if (change > payment.cash) throw CheckoutException("Qaytim naqd summadan oshib ketdi");
 
     final dev = await settings.deviceId();
@@ -123,8 +131,21 @@ class CheckoutService {
         isDeleted: false,
         dirty: true,
         branchId: stock.branch.id,
+        debtAmount: payment.debt,
+        customerId: payment.customerId,
+        customerName: payment.customerName,
       );
       await db.into(db.sales).insert(sale);
+      if (payment.debt > 0) {
+        await customers!.addEntry(
+          customerId: payment.customerId,
+          kind: CustomerDebtKind.sale,
+          amount: payment.debt,
+          saleId: saleId,
+          note: receiptNo,
+          user: cashier,
+        );
+      }
 
       for (var i = 0; i < cart.lines.length; i++) {
         final l = cart.lines[i];
@@ -198,6 +219,18 @@ class CheckoutService {
     }
     await db.transaction(() async {
       await sales.markRefunded(s.sale, by);
+      if (s.sale.debtAmount > 0 && s.sale.customerId.isNotEmpty && customers != null) {
+        // Nasiyaga yozilgan qism mijoz qarzidan chiqariladi.
+        await customers!.addEntry(
+          customerId: s.sale.customerId,
+          kind: CustomerDebtKind.refund,
+          amount: -s.sale.debtAmount,
+          saleId: s.sale.id,
+          note: s.sale.receiptNo,
+          user: by,
+          branchId: s.sale.branchId,
+        );
+      }
       await stock.addMovements(
         [
           for (final i in s.items)
