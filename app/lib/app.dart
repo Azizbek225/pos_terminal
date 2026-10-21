@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/theme.dart';
+import 'core/ui_scale.dart';
 import 'features/auth/login_page.dart';
 import 'features/shell/home_shell.dart';
 import 'state/providers.dart';
@@ -33,6 +34,7 @@ class _PosAppState extends ConsumerState<PosApp> {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: ref.watch(themeModeProvider),
+      builder: (context, child) => UiScale(scale: ref.watch(uiScaleProvider), child: child!),
       home: user == null ? const LoginPage() : const HomeShell(),
     );
   }

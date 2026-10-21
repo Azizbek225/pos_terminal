@@ -173,6 +173,24 @@ class _ViewSection extends ConsumerWidget {
             onSelectionChanged: (s) => repo.set(SettingKeys.themeMode, s.first),
           ),
           const SizedBox(height: 12),
+          const Text('Masshtab (yozuv va tugmalar o\'lchami)'),
+          const SizedBox(height: 6),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: '1', label: Text('100%')),
+              ButtonSegment(value: '0.8', label: Text('80%')),
+              ButtonSegment(value: '0.7', label: Text('70%')),
+            ],
+            selected: {
+              switch (values[SettingKeys.uiScale]) {
+                '0.8' => '0.8',
+                '0.7' => '0.7',
+                _ => '1',
+              },
+            },
+            onSelectionChanged: (s) => repo.set(SettingKeys.uiScale, s.first),
+          ),
+          const SizedBox(height: 12),
           const Text('"Tez-tez sotiladigan" davri'),
           const SizedBox(height: 6),
           SegmentedButton<String>(
@@ -264,6 +282,9 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
   final _name = TextEditingController();
   final _address = TextEditingController();
   final _port = TextEditingController(text: '9100');
+  final _labelW = TextEditingController(text: '38');
+  final _labelH = TextEditingController(text: '35');
+  final _labelGap = TextEditingController(text: '2');
   bool _loaded = false;
   bool _busy = false;
   List<String> _found = [];
@@ -278,6 +299,9 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
         _name.text = c.name;
         _address.text = c.address;
         _port.text = '${c.port}';
+        _labelW.text = _num(c.labelWidthMm);
+        _labelH.text = _num(c.labelHeightMm);
+        _labelGap.text = _num(c.labelGapMm);
         _loaded = true;
       });
     });
@@ -288,11 +312,23 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
     _name.dispose();
     _address.dispose();
     _port.dispose();
+    _labelW.dispose();
+    _labelH.dispose();
+    _labelGap.dispose();
     super.dispose();
   }
 
-  PrinterConfig get _current =>
-      _cfg.copyWith(name: _name.text.trim(), address: _address.text.trim(), port: int.tryParse(_port.text) ?? 9100);
+  static String _num(double v) => v == v.roundToDouble() ? v.toInt().toString() : '$v';
+  static double? _mm(TextEditingController c) => double.tryParse(c.text.trim().replaceAll(',', '.'));
+
+  PrinterConfig get _current => _cfg.copyWith(
+        name: _name.text.trim(),
+        address: _address.text.trim(),
+        port: int.tryParse(_port.text) ?? 9100,
+        labelWidthMm: (_mm(_labelW) ?? 38).clamp(15, 120).toDouble(),
+        labelHeightMm: (_mm(_labelH) ?? 35).clamp(10, 200).toDouble(),
+        labelGapMm: (_mm(_labelGap) ?? 2).clamp(0, 10).toDouble(),
+      );
 
   Future<void> _save() async {
     await ref.read(printerServiceProvider).saveConfig(widget.slot, _current);
@@ -374,6 +410,19 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
             ),
             if (conn != PrinterConnection.none) ...[
               const SizedBox(height: 10),
+              SegmentedButton<PrinterKind>(
+                segments: [
+                  for (final k in PrinterKind.values)
+                    ButtonSegment(
+                      value: k,
+                      label: Text(k.title),
+                      icon: Icon(k == PrinterKind.label ? Icons.label_outline : Icons.receipt_long_outlined),
+                    ),
+                ],
+                selected: {_cfg.kind},
+                onSelectionChanged: (s) => setState(() => _cfg = _cfg.copyWith(kind: s.first)),
+              ),
+              const SizedBox(height: 10),
               TextField(
                 controller: _name,
                 decoration: const InputDecoration(labelText: 'Nomi (ixtiyoriy)'),
@@ -428,7 +477,25 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
                   ],
                 ),
               const SizedBox(height: 10),
-              Wrap(
+              if (_cfg.kind == PrinterKind.label)
+                Row(children: [
+                  for (final (c, label) in [
+                    (_labelW, 'Eni, mm'),
+                    (_labelH, "Bo'yi, mm"),
+                    (_labelGap, "Oralig'i, mm"),
+                  ]) ...[
+                    if (c != _labelW) const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: c,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(labelText: label),
+                      ),
+                    ),
+                  ],
+                ])
+              else
+                Wrap(
                 spacing: 12,
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
@@ -467,7 +534,7 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
                   OutlinedButton.icon(
                     onPressed: _busy ? null : _test,
                     icon: const Icon(Icons.print),
-                    label: const Text('Sinov cheki'),
+                    label: Text(_cfg.kind == PrinterKind.label ? "Sinov yorlig'i" : 'Sinov cheki'),
                   ),
                 const SizedBox(width: 8),
                 FilledButton(onPressed: _save, child: const Text('Saqlash')),

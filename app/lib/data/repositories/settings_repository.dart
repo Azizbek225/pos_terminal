@@ -39,6 +39,7 @@ class SettingKeys {
 
   static const themeMode = 'ui.theme'; // system | light | dark
   static const frequentDays = 'ui.frequentDays'; // 7 | 30
+  static const uiScale = 'ui.scale'; // 1 | 0.8 | 0.7 — ekran masshtabi
 }
 
 class SettingsRepository {

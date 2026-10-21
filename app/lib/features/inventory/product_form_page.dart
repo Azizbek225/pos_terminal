@@ -328,12 +328,11 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                           setState(() => c('barcode').text = code);
                         },
                       ),
-                      if (labelPrintSupported)
-                        IconButton(
-                          tooltip: 'Shtrix/QR-kod yorlig\'ini chop etish',
-                          icon: const Icon(Icons.print_outlined),
-                          onPressed: _printLabel,
-                        ),
+                      IconButton(
+                        tooltip: 'Shtrix/QR-kod yorlig\'ini chop etish',
+                        icon: const Icon(Icons.print_outlined),
+                        onPressed: _printLabel,
+                      ),
                     ])),
                 text('barcode2', "Qo'shimcha shtrix-kod (qadoq)"),
               ]),

@@ -121,6 +121,12 @@ final themeModeProvider = Provider<ThemeMode>((ref) {
   }
 });
 
+/// Ekran masshtabi (Sozlamalar → Ko'rinish): 1.0, 0.8 yoki 0.7.
+final uiScaleProvider = Provider<double>((ref) {
+  final v = double.tryParse(_setting(ref, SettingKeys.uiScale) ?? '') ?? 1;
+  return v.clamp(0.6, 1.0);
+});
+
 final frequentDaysProvider = Provider<int>((ref) => int.tryParse(_setting(ref, SettingKeys.frequentDays) ?? '') ?? 7);
 
 final dailyTargetProvider = Provider<int>((ref) => int.tryParse(_setting(ref, SettingKeys.dailyTarget) ?? '') ?? 0);

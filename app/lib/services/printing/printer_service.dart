@@ -13,6 +13,7 @@ import '../../data/repositories/settings_repository.dart';
 import 'escpos_builder.dart';
 import 'label.dart';
 import 'printer_config.dart';
+import 'tspl_builder.dart';
 import 'receipt_layout.dart';
 import 'windows_raw_printer.dart';
 
@@ -78,6 +79,10 @@ class PrinterService {
         results.add(PrintResult(slot, false, '$slot-printer sozlanmagan'));
         continue;
       }
+      if (cfg.kind == PrinterKind.label) {
+        results.add(PrintResult(slot, false, '$slot-printer yorliq printeri — chek unga chiqmaydi'));
+        continue;
+      }
       try {
         final lines = ReceiptLayout.build(sale, store, width: cfg.charsPerLine, copy: copy);
         final drawer = cfg.openDrawer && !copy && sale.sale.paidCash > 0 &&
@@ -97,12 +102,12 @@ class PrinterService {
   Future<void> printTest(int slot) async {
     final cfg = await config(slot);
     if (!cfg.enabled) throw PrintException('$slot-printer sozlanmagan');
-    await send(cfg, await EscPosBuilder.testPage(cfg));
+    await send(cfg, cfg.kind == PrinterKind.label ? TsplBuilder.testLabel(cfg) : await EscPosBuilder.testPage(cfg));
   }
 
-  /// Tovar yorliqlarini [slot]-printerga chop etish: ESC/POS shtrix/QR
-  /// buyruqlari printerning o'z ulanishi (USB, tarmoq, Bluetooth, server)
-  /// orqali yuboriladi.
+  /// Tovar yorliqlarini [slot]-printerga chop etish: yorliq printeriga TSPL,
+  /// chek printeriga ESC/POS buyruqlari printerning o'z ulanishi (USB,
+  /// tarmoq, Bluetooth, server) orqali yuboriladi.
   Future<void> printLabels(
     int slot,
     LabelData data, {
@@ -113,8 +118,10 @@ class PrinterService {
   }) async {
     final cfg = await config(slot);
     if (!cfg.enabled) throw PrintException('$slot-printer sozlanmagan (Sozlamalar → Printerlar)');
-    final bytes = await EscPosBuilder.labels(data, cfg,
-        count: count, kind: kind, showName: showName, showPrice: showPrice);
+    final bytes = cfg.kind == PrinterKind.label
+        ? TsplBuilder.labels(data, cfg, count: count, kind: kind, showName: showName, showPrice: showPrice)
+        : await EscPosBuilder.labels(data, cfg,
+            count: count, kind: kind, showName: showName, showPrice: showPrice);
     await send(cfg, bytes);
   }
 

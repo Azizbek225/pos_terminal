@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,9 +7,6 @@ import '../../services/printing/label.dart';
 import '../../services/printing/printer_config.dart';
 import '../../state/providers.dart';
 import '../shell/common_widgets.dart';
-
-/// Yorliq chop etish faqat kompyuterda.
-bool get labelPrintSupported => Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
 const _kKind = 'label.kind';
 const _kName = 'label.showName';

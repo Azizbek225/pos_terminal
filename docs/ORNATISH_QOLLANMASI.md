@@ -339,9 +339,14 @@ Telefon chekni Bluetooth'siz, **PosServer.exe** orqali kompyuterga ulangan print
 3. **Sozlamalar → Printerlar → 1-printer** → Ulanish turi: **Kompyuter printeri (server orqali)**.
 4. 🔍 tugmasini bosing — kompyuterdagi printerlar chiqadi, keraklisini tanlang → **Sinov cheki**.
 
-### 7.6. Tovar yorlig'i (shtrix/QR-kod, kompyuterda)
-Tovar kartasida shtrix-kod yonidagi 🖨 tugmasi: shtrix yoki QR, soni, o'lcham, nom va narx tanlanadi.
-Standart holatda **2-printer**ga chiqadi (chek termoprinteri: USB, Wi-Fi, Bluetooth yoki server orqali).
+### 7.6. Tovar yorlig'i (shtrix/QR-kod) — XP-245B va boshqa etiketka printerlari
+Tovar kartasida shtrix-kod yonidagi 🖨 tugmasi (kompyuterda ham, telefonda ham): shtrix yoki QR,
+soni, nom va narx tanlanadi. Standart holatda **2-printer**ga chiqadi.
+1. **Sozlamalar → Printerlar → 2-printer** → **Yorliq (etiketka) printeri**.
+2. Etiketka o'lchami: masalan **38 × 35 mm**, oralig'i (gap) **2 mm**.
+3. Ulanish: printer kompyuterga USB bilan ulangan bo'lsa — kompyuterda **USB / tizim printeri**
+   (Windows'dagi printer nomi, masalan `Xprinter XP-245B`), telefonda — **Kompyuter printeri (server orqali)**.
+4. **Sinov yorlig'i** ni bosing. Yorliq printeri TSPL buyruqlarini qabul qiladi (XP-245B, XP-365B, TSC).
 
 ### 7.7. Chek matni
 Ko'p arzon termoprinterlarda o'zbek harflari (oʻ, gʻ) yo'q. Ilova chekdagi matnni avtomatik
