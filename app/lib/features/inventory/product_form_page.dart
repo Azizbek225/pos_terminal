@@ -10,10 +10,12 @@ import '../../core/formatters.dart';
 import '../../core/season.dart';
 import '../../data/database.dart';
 import '../../data/repositories/stock_repository.dart';
+import '../../services/printing/label_pdf.dart';
 import '../../services/product_images.dart';
 import '../../services/scanner/camera_scanner.dart';
 import '../../state/providers.dart';
 import '../shell/common_widgets.dart';
+import 'label_print_dialog.dart';
 
 /// Tovar kartasini ochish (yangi yoki tahrirlash). Qaytaradi: saqlangan tovar ID si.
 Future<String?> openProductForm(BuildContext context, {Product? product, String? barcode}) {
@@ -50,6 +52,23 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   bool get _isNew => widget.product == null;
 
   TextEditingController c(String key) => _c.putIfAbsent(key, TextEditingController.new);
+
+  /// Yorliq chop etish: kod bo'lmasa — ichki shtrix-kod yaratiladi.
+  Future<void> _printLabel() async {
+    var code = _t('barcode');
+    if (code.isEmpty) {
+      code = await ref.read(productRepoProvider).generateInternalBarcode();
+      setState(() => c('barcode').text = code);
+    }
+    if (!mounted) return;
+    if (code != (widget.product?.barcode ?? '')) {
+      showMessage(context, "Yangi shtrix-kod tovar saqlangandan keyin ishlaydi — 'Saqlash' ni unutmang");
+    }
+    await showLabelPrintDialog(
+      context,
+      LabelData(code: code, name: _t('shortName').isEmpty ? _t('name') : _t('shortName'), price: _i('sale')),
+    );
+  }
 
   @override
   void initState() {
@@ -309,6 +328,12 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                           setState(() => c('barcode').text = code);
                         },
                       ),
+                      if (labelPrintSupported)
+                        IconButton(
+                          tooltip: 'Shtrix/QR-kod yorlig\'ini chop etish',
+                          icon: const Icon(Icons.print_outlined),
+                          onPressed: _printLabel,
+                        ),
                     ])),
                 text('barcode2', "Qo'shimcha shtrix-kod (qadoq)"),
               ]),
