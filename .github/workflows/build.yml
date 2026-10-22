@@ -213,7 +213,8 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt pyinstaller
       # Bitta fayl: Docker/PostgreSQL'siz, baza exe yonida (pos.db).
-      - run: pyinstaller --onefile --name PosServer --collect-submodules uvicorn --distpath ../dist run_server.py
+      # Web panel sahifasi (app/static) exe ichiga qo'shiladi.
+      - run: pyinstaller --onefile --name PosServer --collect-submodules uvicorn --add-data "app/static:app/static" --distpath ../dist run_server.py
       - uses: actions/upload-artifact@v4
         with:
           name: server-windows

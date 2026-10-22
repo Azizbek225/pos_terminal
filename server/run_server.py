@@ -213,6 +213,10 @@ def main() -> None:
     print()
     print("  Shu ikkalasini har bir qurilmada yozing:")
     print("  Sozlamalar > Sinxronlash")
+    print()
+    print(f"  Hisobot paneli : brauzerda http://{ips[0]}:{PORT}")
+    print("  (ilovadagi admin login/paroli yoki admin + API kalit)")
+    print()
     print("  Bu oynani yopmang (yopsangiz sinxronlash to'xtaydi).")
     if autostart:
         print("  Windows yonganda server o'zi ishga tushadi.")

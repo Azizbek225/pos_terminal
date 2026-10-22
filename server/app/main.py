@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import __version__, printers, sync
+from . import __version__, printers, sync, web
 from .config import settings
 from .db import Base, engine, get_session
 from .models import Device, SyncRecord
@@ -36,6 +36,7 @@ async def lifespan(_: FastAPI):
 DEFAULT_BRANCH_ID = "00000000-0000-4000-8000-200000000001"
 
 app = FastAPI(title="POS Terminal Sync", version=__version__, lifespan=lifespan)
+app.include_router(web.router)
 
 
 def require_key(x_api_key: Annotated[str | None, Header()] = None) -> None:
