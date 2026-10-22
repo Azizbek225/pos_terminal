@@ -1,7 +1,9 @@
 import 'package:drift/drift.dart';
 
+import '../../core/formatters.dart';
 import '../../core/security.dart';
 import '../database.dart';
+import 'activity_repository.dart';
 
 /// Tovarlar ro'yxatini filtrlash parametrlari.
 class ProductFilter {
@@ -34,9 +36,12 @@ class ProductFilter {
 
 /// Tovarlar va kategoriyalar bilan ishlash.
 class ProductRepository {
-  ProductRepository(this.db, this.deviceId);
+  ProductRepository(this.db, this.deviceId, {this.activity});
   final AppDatabase db;
   final Future<String> Function() deviceId;
+
+  /// O'zgarishlar jurnali (tovarlar barcha filiallarga umumiy).
+  final ActivityRepository? activity;
 
   // --------------------------------------------------------------------------
   //  Qidiruv
@@ -138,6 +143,13 @@ class ProductRepository {
             dirty: const Value(true),
             stockQty: const Value(0),
           ));
+      final p = await byId(id);
+      if (p != null) {
+        await activity?.log('product_created',
+            details: '${p.name}${p.barcode.isEmpty ? '' : ' (${p.barcode})'}, narx ${Fmt.money(p.salePrice)}',
+            refId: id,
+            global: true);
+      }
     } else {
       await (db.update(db.products)..where((p) => p.id.equals(id))).write(data.copyWith(
             id: const Value.absent(),
@@ -148,8 +160,43 @@ class ProductRepository {
             deviceId: Value(dev),
             dirty: const Value(true),
           ));
+      final p = await byId(id);
+      if (p != null) await _logChanges(existing, p);
     }
     return id;
+  }
+
+  Future<void> _logChanges(Product a, Product b) async {
+    final log = activity;
+    if (log == null) return;
+    if (a.salePrice != b.salePrice || a.purchasePrice != b.purchasePrice) {
+      final parts = [
+        if (a.salePrice != b.salePrice) 'sotuv ${Fmt.money(a.salePrice)} → ${Fmt.money(b.salePrice)}',
+        if (a.purchasePrice != b.purchasePrice) 'kirim ${Fmt.money(a.purchasePrice)} → ${Fmt.money(b.purchasePrice)}',
+      ];
+      await log.log('price_changed', details: '${b.name}: ${parts.join(', ')}', refId: b.id, global: true);
+    }
+    final changed = <String>[
+      if (a.name != b.name) 'nomi: ${a.name} → ${b.name}',
+      if (a.barcode != b.barcode || a.barcode2 != b.barcode2) 'shtrix-kod',
+      if (a.sku != b.sku) 'artikul',
+      if (a.categoryId != b.categoryId) 'kategoriya',
+      if (a.minStock != b.minStock) 'min. qoldiq ${Fmt.qty(a.minStock)} → ${Fmt.qty(b.minStock)}',
+      if (a.wholesalePrice != b.wholesalePrice) 'ulgurji narx',
+      if (a.isActive != b.isActive) b.isActive ? 'faollashtirildi' : "faol emas qilindi",
+      if (a.imagePath != b.imagePath) 'rasm',
+      if (a.unit != b.unit) "o'lchov birligi",
+    ];
+    final other = a.copyWith(
+          name: b.name, barcode: b.barcode, barcode2: b.barcode2, sku: b.sku, categoryId: Value(b.categoryId),
+          minStock: b.minStock, wholesalePrice: b.wholesalePrice, isActive: b.isActive, imagePath: b.imagePath,
+          unit: b.unit, salePrice: b.salePrice, purchasePrice: b.purchasePrice,
+          updatedAt: b.updatedAt, version: b.version, deviceId: b.deviceId, dirty: b.dirty,
+        ) !=
+        b;
+    if (changed.isEmpty && !other) return;
+    if (changed.isEmpty) changed.add("boshqa ma'lumotlar");
+    await log.log('product_updated', details: '${b.name}: ${changed.join(', ')}', refId: b.id, global: true);
   }
 
   /// Yumshoq o'chirish (boshqa qurilmalarga ham sinxronlanadi).
@@ -163,6 +210,8 @@ class ProductRepository {
       version: Value(p.version + 1),
       dirty: const Value(true),
     ));
+    await activity?.log('product_deleted',
+        details: '${p.name}${p.barcode.isEmpty ? '' : ' (${p.barcode})'}', refId: id, global: true);
   }
 
   /// Shtrix-kod boshqa tovarda band emasligini tekshirish.
@@ -222,6 +271,7 @@ class ProductRepository {
             updatedAt: now,
             deviceId: Value(dev),
           ));
+      await activity?.log('category_saved', details: name, refId: newId, global: true);
       return newId;
     }
     final existing =
@@ -234,11 +284,16 @@ class ProductRepository {
       deviceId: Value(dev),
       dirty: const Value(true),
     ));
+    if (existing.name != name) {
+      await activity?.log('category_saved', details: '${existing.name} → $name', refId: id, global: true);
+    }
     return id;
   }
 
   Future<void> deleteCategory(String id) async {
     final now = Ids.nowMs();
+    final c = await (db.select(db.categories)..where((c) => c.id.equals(id))).getSingleOrNull();
+    if (c != null) await activity?.log('category_deleted', details: c.name, refId: id, global: true);
     await (db.update(db.categories)..where((c) => c.id.equals(id))).write(CategoriesCompanion(
       isDeleted: const Value(true),
       updatedAt: Value(now),

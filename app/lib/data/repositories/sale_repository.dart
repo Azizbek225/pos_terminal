@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../core/branch.dart';
 import '../../core/constants.dart';
 import '../../core/security.dart';
 import '../database.dart';
@@ -76,11 +77,14 @@ class SaleWithItems {
 }
 
 class SaleRepository {
-  SaleRepository(this.db);
+  SaleRepository(this.db, {BranchContext? branch}) : branch = branch ?? BranchContext();
   final AppDatabase db;
+  final BranchContext branch;
 
-  Stream<List<Sale>> watchSales(SaleFilter f) {
-    final q = db.select(db.sales)..where((s) => s.isDeleted.equals(false));
+  Stream<List<Sale>> watchSales(SaleFilter f) => watchInBranch(branch, (b) => _watchSales(f, b));
+
+  Stream<List<Sale>> _watchSales(SaleFilter f, String branchId) {
+    final q = db.select(db.sales)..where((s) => s.isDeleted.equals(false) & s.branchId.equals(branchId));
     if (f.fromMs != null) q.where((s) => s.createdAt.isBiggerOrEqualValue(f.fromMs!));
     if (f.toMs != null) q.where((s) => s.createdAt.isSmallerThanValue(f.toMs!));
     if (f.cashierId != null) q.where((s) => s.cashierId.equals(f.cashierId!));
@@ -107,10 +111,13 @@ class SaleRepository {
     return SaleWithItems(sale, items);
   }
 
-  Stream<Sale?> watchLast() => (db.select(db.sales)
-        ..orderBy([(s) => OrderingTerm.desc(s.createdAt)])
-        ..limit(1))
-      .watchSingleOrNull();
+  Stream<Sale?> watchLast() => watchInBranch(
+      branch,
+      (b) => (db.select(db.sales)
+            ..where((s) => s.branchId.equals(b))
+            ..orderBy([(s) => OrderingTerm.desc(s.createdAt)])
+            ..limit(1))
+          .watchSingleOrNull());
 
   /// Chekni "qaytarilgan" deb belgilash (ombor harakatlari servisda qo'shiladi).
   Future<void> markRefunded(Sale sale, User by) async {
@@ -129,8 +136,8 @@ class SaleRepository {
     final from = Ids.nowMs() - days * 86400000;
     final row = await db.customSelect(
       "SELECT AVG(total) AS a, COUNT(*) AS c FROM sales WHERE status = 'completed' "
-      'AND is_deleted = 0 AND created_at >= ?',
-      variables: [Variable.withInt(from)],
+      'AND is_deleted = 0 AND created_at >= ? AND branch_id = ?',
+      variables: [Variable.withInt(from), Variable.withString(branch.id)],
     ).getSingle();
     final count = row.read<int>('c');
     if (count < 10) return 0; // Statistika yetarli emas

@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import __version__, sync
+from . import __version__, printers, sync
 from .config import settings
 from .db import Base, engine, get_session
 from .models import Device, SyncRecord
@@ -31,6 +31,9 @@ async def lifespan(_: FastAPI):
     Base.metadata.create_all(engine)
     yield
 
+
+# Ilovadagi kDefaultBranchId bilan bir xil.
+DEFAULT_BRANCH_ID = "00000000-0000-4000-8000-200000000001"
 
 app = FastAPI(title="POS Terminal Sync", version=__version__, lifespan=lifespan)
 
@@ -154,11 +157,35 @@ def download_image(name: str) -> FileResponse:
     return FileResponse(path)
 
 
+MAX_PRINT_BYTES = 2 * 1024 * 1024
+
+
+@app.get("/api/printers", dependencies=[Depends(require_key)])
+def list_printers() -> dict:
+    """Server turgan kompyuterdagi printerlar (telefon chekni shu yerga yuboradi)."""
+    return {"printers": printers.list_printers()}
+
+
+@app.post("/api/print", dependencies=[Depends(require_key)])
+async def print_raw(request: Request, printer: Annotated[str, Query(min_length=1, max_length=200)]) -> dict:
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="Bo'sh chek")
+    if len(body) > MAX_PRINT_BYTES:
+        raise HTTPException(status_code=413, detail="Chek juda katta")
+    try:
+        printers.print_raw(printer, body)
+    except printers.PrintError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return {"printed": len(body), "printer": printer}
+
+
 @app.get("/api/reports/daily", dependencies=[Depends(require_key)])
 def daily_report(
     session: SessionDep,
     date_from: Annotated[str, Query(description="YYYY-MM-DD")],
     date_to: Annotated[str, Query(description="YYYY-MM-DD (shu kun ham kiradi)")],
+    branch_id: Annotated[str | None, Query(description="Faqat shu filial (bo'sh — hammasi)")] = None,
 ) -> dict:
     """Barcha qurilmalar bo'yicha kunlik savdo (egasi uchun masofaviy hisobot)."""
     try:
@@ -174,6 +201,9 @@ def daily_report(
         d = r.data
         created = int(d.get("created_at") or 0)
         if not (start <= created < end) or d.get("status") != "completed" or d.get("is_deleted"):
+            continue
+        # Filial qo'shilishidan oldingi cheklar — asosiy filialniki.
+        if branch_id and (d.get("branch_id") or DEFAULT_BRANCH_ID) != branch_id:
             continue
         key = datetime.fromtimestamp(created / 1000).strftime("%Y-%m-%d")
         days[key]["total"] += int(d.get("total") or 0)

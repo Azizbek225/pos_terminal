@@ -94,6 +94,7 @@ class SyncService {
   };
 
   TableInfo _table(String entity) => switch (entity) {
+    SyncEntities.branches => db.branches,
     SyncEntities.users => db.users,
     SyncEntities.categories => db.categories,
     SyncEntities.products => db.products,
@@ -105,6 +106,8 @@ class SyncService {
     SyncEntities.supplierPurchases => db.supplierPurchases,
     SyncEntities.supplierPurchaseItems => db.supplierPurchaseItems,
     SyncEntities.supplierPayments => db.supplierPayments,
+    SyncEntities.customers => db.customers,
+    SyncEntities.customerDebts => db.customerDebts,
     _ => throw ArgumentError('Noma\'lum entity: $entity'),
   };
 

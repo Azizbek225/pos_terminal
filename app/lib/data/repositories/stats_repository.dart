@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../core/branch.dart';
 import '../../core/formatters.dart';
 import '../../core/season.dart';
 import '../database.dart';
@@ -14,6 +15,7 @@ class PeriodSummary {
     this.cash = 0,
     this.card = 0,
     this.transfer = 0,
+    this.debt = 0,
   });
 
   final int total;
@@ -23,6 +25,12 @@ class PeriodSummary {
   final int cash;
   final int card;
   final int transfer;
+
+  /// Nasiyaga (qarzga) sotilgan qism — hali qo'lga tushmagan.
+  final int debt;
+
+  /// Savdodan hozir qo'lga tushgan pul (naqd, karta, o'tkazma).
+  int get collected => total - debt;
 
   double get average => count == 0 ? 0 : total / count;
 }
@@ -85,20 +93,25 @@ const _seasonYearExpr = 'CASE WHEN $_monthExpr = 12 THEN $_yearExpr + 1 ELSE $_y
 /// Dashboard, tavsiyalar va mavsumiy tahlil uchun agregat so'rovlar.
 /// Barcha `watch*` metodlari real-time: yangi sotuv bo'lishi bilan yangilanadi.
 class StatsRepository {
-  StatsRepository(this.db);
+  StatsRepository(this.db, {BranchContext? branch}) : branch = branch ?? BranchContext();
   final AppDatabase db;
+  final BranchContext branch;
 
-  static const _completed = "s.status = 'completed' AND s.is_deleted = 0";
+  /// Yakunlangan cheklar, joriy filial (`?` — filial ID si, birinchi o'zgaruvchi).
+  static const _completed = "s.status = 'completed' AND s.is_deleted = 0 AND s.branch_id = ?";
 
-  Stream<PeriodSummary> watchSummary(DayRange r) {
+  Stream<PeriodSummary> watchSummary(DayRange r) => watchInBranch(branch, (b) => summaryOf(r, b));
+
+  /// Istalgan filialning davr bo'yicha ko'rsatkichlari (monitoring uchun).
+  Stream<PeriodSummary> summaryOf(DayRange r, String branchId) {
     return db
         .customSelect(
           'SELECT COALESCE(SUM(s.total),0) t, COUNT(*) c, COALESCE(SUM(s.total - s.cost_total),0) p, '
           'COALESCE(SUM(s.discount_amount),0) d, '
           'COALESCE(SUM(s.paid_cash - s.change_amount),0) cash, COALESCE(SUM(s.paid_card),0) card, '
-          'COALESCE(SUM(s.paid_transfer),0) tr '
+          'COALESCE(SUM(s.paid_transfer),0) tr, COALESCE(SUM(s.debt_amount),0) debt '
           'FROM sales s WHERE $_completed AND s.created_at >= ? AND s.created_at < ?',
-          variables: [Variable.withInt(r.fromMs), Variable.withInt(r.toMs)],
+          variables: [Variable.withString(branchId), Variable.withInt(r.fromMs), Variable.withInt(r.toMs)],
           readsFrom: {db.sales},
         )
         .watchSingle()
@@ -110,6 +123,7 @@ class StatsRepository {
               cash: row.read<int>('cash'),
               card: row.read<int>('card'),
               transfer: row.read<int>('tr'),
+              debt: row.read<int>('debt'),
             ));
   }
 
@@ -121,7 +135,7 @@ class StatsRepository {
       'COUNT(DISTINCT si.sale_id) rc FROM sale_items si JOIN sales s ON s.id = si.sale_id '
       'WHERE $_completed AND s.created_at >= ? AND s.created_at < ? '
       'GROUP BY si.product_id ORDER BY $order LIMIT ?',
-      [Variable.withInt(r.fromMs), Variable.withInt(r.toMs), Variable.withInt(limit)],
+      (b) => [Variable.withString(b), Variable.withInt(r.fromMs), Variable.withInt(r.toMs), Variable.withInt(limit)],
     );
   }
 
@@ -135,13 +149,17 @@ class StatsRepository {
       'JOIN products p ON p.id = si.product_id '
       'WHERE $_completed AND s.created_at >= ? AND p.is_deleted = 0 AND p.is_active = 1 '
       'GROUP BY si.product_id ORDER BY rc DESC, q DESC LIMIT ?',
-      [Variable.withInt(from), Variable.withInt(limit)],
+      (b) => [Variable.withString(b), Variable.withInt(from), Variable.withInt(limit)],
     );
   }
 
   /// Mavsumiy tavsiyalar: shu mavsumdagi tarixiy sotuvlar (joriy yil 2x vaznda),
   /// yetishmasa — mavsum belgisi qo'yilgan tovarlar bilan to'ldiriladi.
-  Stream<List<ProductSales>> watchSeasonal(Season season, {int limit = 24}) {
+  Stream<List<ProductSales>> watchSeasonal(Season season, {int limit = 24}) =>
+      // seasonal_stats — joriy filial keshi; filial almashganda qayta quriladi.
+      watchInBranch(branch, (_) => _watchSeasonal(season, limit));
+
+  Stream<List<ProductSales>> _watchSeasonal(Season season, int limit) {
     final year = Season.seasonYear(DateTime.now());
     return db
         .customSelect(
@@ -228,7 +246,7 @@ class StatsRepository {
       'SELECT ss.product_id pid, COALESCE(p.name, ss.product_id) n, SUM(ss.qty) q, SUM(ss.revenue) rev, '
       'SUM(ss.sale_count) rc FROM seasonal_stats ss LEFT JOIN products p ON p.id = ss.product_id '
       'WHERE ss.season = ? $yearCond GROUP BY ss.product_id ORDER BY q DESC LIMIT ?',
-      [
+      (_) => [
         Variable.withInt(season.index0),
         if (year != null) Variable.withInt(year),
         Variable.withInt(limit),
@@ -242,28 +260,28 @@ class StatsRepository {
     return rows.map((r) => r.read<int>('year')).toList();
   }
 
-  Stream<List<CashierSales>> watchByCashier(DayRange r) {
+  Stream<List<CashierSales>> watchByCashier(DayRange r) => watchInBranch(branch, (b) {
     return db
         .customSelect(
           'SELECT s.cashier_id id, MAX(s.cashier_name) n, SUM(s.total) t, COUNT(*) c FROM sales s '
           'WHERE $_completed AND s.created_at >= ? AND s.created_at < ? GROUP BY s.cashier_id ORDER BY t DESC',
-          variables: [Variable.withInt(r.fromMs), Variable.withInt(r.toMs)],
+          variables: [Variable.withString(b), Variable.withInt(r.fromMs), Variable.withInt(r.toMs)],
           readsFrom: {db.sales},
         )
         .watch()
         .map((rows) => rows
             .map((x) => CashierSales(x.read<String>('id'), x.read<String>('n'), x.read<int>('t'), x.read<int>('c')))
             .toList());
-  }
+  });
 
   /// Oxirgi N kunlik savdo (grafik uchun). Savdo bo'lmagan kunlar 0 bilan.
-  Stream<List<DailyPoint>> watchDaily({int days = 14}) {
+  Stream<List<DailyPoint>> watchDaily({int days = 14}) => watchInBranch(branch, (b) {
     final r = DayRange.lastDays(days);
     return db
         .customSelect(
           "SELECT date(s.created_at / 1000, 'unixepoch', 'localtime') d, SUM(s.total) t, COUNT(*) c "
           'FROM sales s WHERE $_completed AND s.created_at >= ? GROUP BY d',
-          variables: [Variable.withInt(r.fromMs)],
+          variables: [Variable.withString(b), Variable.withInt(r.fromMs)],
           readsFrom: {db.sales},
         )
         .watch()
@@ -276,7 +294,7 @@ class StatsRepository {
         return DailyPoint(day, x?.read<int>('t') ?? 0, x?.read<int>('c') ?? 0);
       });
     });
-  }
+  });
 
   // --------------------------------------------------------------------------
   //  Mavsumiy statistika keshini yangilash
@@ -298,7 +316,8 @@ class StatsRepository {
     ).then((_) => db.notifyUpdates({TableUpdate.onTable(db.seasonalStats)}));
   }
 
-  /// Statistikani barcha sotuvlardan to'liq qayta qurish (sinxronlashdan keyin).
+  /// Statistikani joriy filialning barcha sotuvlaridan to'liq qayta qurish
+  /// (sinxronlashdan yoki filial almashgandan keyin).
   Future<void> rebuildSeasonal() async {
     await db.transaction(() async {
       await db.customStatement('DELETE FROM seasonal_stats');
@@ -307,6 +326,7 @@ class StatsRepository {
         'SELECT si.product_id, $_seasonExpr, $_seasonYearExpr, SUM(si.qty), SUM(si.line_total), '
         'COUNT(DISTINCT si.sale_id) FROM sale_items si JOIN sales s ON s.id = si.sale_id '
         'WHERE $_completed GROUP BY si.product_id, $_seasonExpr, $_seasonYearExpr',
+        [branch.id],
       );
     });
     db.notifyUpdates({TableUpdate.onTable(db.seasonalStats)});
@@ -314,10 +334,10 @@ class StatsRepository {
 
   // --------------------------------------------------------------------------
 
-  Stream<List<ProductSales>> _productSales(String sql, List<Variable> vars,
-      {Set<ResultSetImplementation>? extraReads}) {
+  Stream<List<ProductSales>> _productSales(String sql, List<Variable> Function(String branchId) vars,
+      {Set<ResultSetImplementation>? extraReads}) => watchInBranch(branch, (b) {
     return db
-        .customSelect(sql, variables: vars, readsFrom: {db.sales, db.saleItems, db.products, ...?extraReads})
+        .customSelect(sql, variables: vars(b), readsFrom: {db.sales, db.saleItems, db.products, ...?extraReads})
         .watch()
         .asyncMap((rows) async {
       final ids = rows.map((r) => r.read<String>('pid'));
@@ -333,6 +353,34 @@ class StatsRepository {
               ))
           .toList();
     });
+  });
+
+  // --------------------------------------------------------------------------
+  //  Monitoring: barcha filiallar
+  // --------------------------------------------------------------------------
+
+  /// Oxirgi cheklar (berilgan filiallar bo'yicha, eng yangisi birinchi).
+  Stream<List<Sale>> watchRecentSales(List<String> branchIds, {int limit = 30}) {
+    if (branchIds.isEmpty) return Stream.value(const []);
+    return (db.select(db.sales)
+          ..where((s) => s.isDeleted.equals(false) & s.branchId.isIn(branchIds))
+          ..orderBy([(s) => OrderingTerm.desc(s.createdAt)])
+          ..limit(limit))
+        .watch();
+  }
+
+  /// Filial bo'yicha minimal qoldiqdan past tovarlar soni (har filialning o'z qoldig'i).
+  Stream<int> watchLowStockCount(String branchId) {
+    return db
+        .customSelect(
+          'SELECT COUNT(*) c FROM products p WHERE p.is_deleted = 0 AND p.is_active = 1 AND p.min_stock > 0 '
+          'AND COALESCE((SELECT SUM(m.qty) FROM stock_movements m WHERE m.product_id = p.id '
+          'AND m.is_deleted = 0 AND m.branch_id = ?), 0) <= p.min_stock',
+          variables: [Variable.withString(branchId)],
+          readsFrom: {db.products, db.stockMovements},
+        )
+        .watchSingle()
+        .map((r) => r.read<int>('c'));
   }
 
   Future<Map<String, Product>> _productsById(Iterable<String> ids) async {

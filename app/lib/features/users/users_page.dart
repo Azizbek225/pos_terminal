@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/branch.dart';
 import '../../core/constants.dart';
 import '../../core/formatters.dart';
 import '../../data/database.dart';
+import '../../data/repositories/activity_repository.dart';
 import '../../state/providers.dart';
 import '../shell/common_widgets.dart';
 
@@ -39,6 +41,7 @@ class _UsersList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final users = ref.watch(usersProvider).value ?? const <User>[];
+    final branches = ref.watch(branchesProvider).value ?? const <Branch>[];
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => showUserDialog(context, ref),
@@ -53,7 +56,8 @@ class _UsersList extends ConsumerWidget {
             subtitle: Text(
               "Admin — barcha bo'limlar, 20% dan yuqori chegirma, qaytarish, sozlamalar.\n"
               "Kassir — savdo, o'z cheklari tarixi, alertlar; chegirma 20% gacha.\n"
-              'Omborchi — ombor (kirim, chiqim, inventarizatsiya), mavsumiy tahlil, alertlar.',
+              'Omborchi — ombor (kirim, chiqim, inventarizatsiya), mavsumiy tahlil, alertlar.\n'
+              "Filiallar: har bir xodimga qaysi filialda qaysi rol borligini alohida belgilash mumkin.",
             ),
           ),
         ),
@@ -64,7 +68,7 @@ class _UsersList extends ConsumerWidget {
             child: ListTile(
               leading: CircleAvatar(child: Text(u.fullName.isEmpty ? '?' : u.fullName[0].toUpperCase())),
               title: Text('${u.fullName}${u.isActive ? '' : ' (bloklangan)'}'),
-              subtitle: Text('${u.username} · ${UserRole.fromCode(u.role).label}'
+              subtitle: Text('${u.username} · ${_accessText(u, branches)}'
                   '${u.lastLoginAt == null ? '' : ' · oxirgi kirish: ${Fmt.dateTimeMs(u.lastLoginAt!)}'}'),
               onTap: () => showUserDialog(context, ref, user: u),
               trailing: IconButton(
@@ -91,14 +95,18 @@ class _UsersList extends ConsumerWidget {
   }
 }
 
+String _accessText(User u, List<Branch> branches) {
+  final map = u.branchRoleMap;
+  if (map.isEmpty) {
+    final r = UserRole.fromCode(u.role).label;
+    return branches.length > 1 ? '$r (barcha filiallar)' : r;
+  }
+  final names = {for (final b in branches) b.id: b.name};
+  return map.entries.map((e) => '${names[e.key] ?? '?'}: ${UserRole.fromCode(e.value).label}').join(', ');
+}
+
 class _AuditList extends ConsumerWidget {
   const _AuditList();
-
-  static const _actions = {
-    'login': 'Tizimga kirish',
-    'discount_approved': 'Chegirma tasdiqlandi',
-    'refund': 'Chek qaytarildi',
-  };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -112,7 +120,7 @@ class _AuditList extends ConsumerWidget {
         final a = list[i];
         return ListTile(
           dense: true,
-          title: Text('${_actions[a.action] ?? a.action} — ${a.userName}'),
+          title: Text('${kActivityLabels[a.action] ?? a.action} — ${a.userName}'),
           subtitle: a.details.isEmpty ? null : Text(a.details),
           trailing: Text(Fmt.dateTimeMs(a.createdAt)),
         );
@@ -129,6 +137,9 @@ Future<void> showUserDialog(BuildContext context, WidgetRef ref, {User? user}) a
   final pass = TextEditingController();
   var role = user == null ? UserRole.cashier : UserRole.fromCode(user.role);
   var active = user?.isActive ?? true;
+  final branches = (ref.read(branchesProvider).value ?? const <Branch>[]).where((b) => b.isActive).toList();
+  final branchRoles = <String, String>{...?user?.branchRoleMap};
+  var allBranches = branchRoles.isEmpty;
   String? error;
 
   await showDialog<void>(
@@ -153,6 +164,41 @@ Future<void> showUserDialog(BuildContext context, WidgetRef ref, {User? user}) a
                 items: [for (final r in UserRole.values) DropdownMenuItem(value: r, child: Text(r.label))],
                 onChanged: (v) => setState(() => role = v ?? role),
               ),
+              if (branches.length > 1) ...[
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: allBranches,
+                  onChanged: (v) => setState(() {
+                    allBranches = v;
+                    if (!v && branchRoles.isEmpty) {
+                      branchRoles[ref.read(currentBranchProvider)] = role.code;
+                    }
+                  }),
+                  title: const Text('Barcha filiallarda shu rol'),
+                  subtitle: const Text("O'chirsangiz — har bir filial uchun alohida ruxsat"),
+                ),
+                if (!allBranches)
+                  for (final b in branches)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        initialValue: branchRoles[b.id] ?? '',
+                        decoration: InputDecoration(labelText: b.name, prefixIcon: const Icon(Icons.store_outlined)),
+                        items: [
+                          const DropdownMenuItem(value: '', child: Text("Ruxsat yo'q")),
+                          for (final r in UserRole.values) DropdownMenuItem(value: r.code, child: Text(r.label)),
+                        ],
+                        onChanged: (v) => setState(() {
+                          if (v == null || v.isEmpty) {
+                            branchRoles.remove(b.id);
+                          } else {
+                            branchRoles[b.id] = v;
+                          }
+                        }),
+                      ),
+                    ),
+              ],
               const SizedBox(height: 10),
               TextField(
                 controller: pass,
@@ -179,6 +225,10 @@ Future<void> showUserDialog(BuildContext context, WidgetRef ref, {User? user}) a
                 setState(() => error = 'F.I.Sh. kiriting');
                 return;
               }
+              if (!allBranches && branchRoles.isEmpty) {
+                setState(() => error = 'Kamida bitta filialga ruxsat bering');
+                return;
+              }
               try {
                 await ref.read(userRepoProvider).save(
                       id: user?.id,
@@ -188,6 +238,7 @@ Future<void> showUserDialog(BuildContext context, WidgetRef ref, {User? user}) a
                       password: pass.text.isEmpty ? null : pass.text,
                       phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
                       isActive: active,
+                      branchRoles: allBranches ? const {} : branchRoles,
                     );
                 ref.read(syncServiceProvider).requestSync();
                 if (c.mounted) Navigator.pop(c);

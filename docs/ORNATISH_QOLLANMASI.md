@@ -262,7 +262,25 @@ Belgidagi raqam — hali yuborilmagan o'zgarishlar soni. Belgini bosish darhol s
   ```
   So'ng `v_sales`, `v_sale_items`, `v_products`, `v_stock`, `v_daily_sales` jadvallaridan o'qing.
 
-### 6.6. Server zaxira nusxasi
+### 6.6. Telefondan internet orqali real vaqtda kuzatish (Monitoring)
+
+Do'kondan tashqarida (uyda, yo'lda, mobil internetda) savdoni kuzatish uchun telefon PosServer.exe
+turgan kompyuterga internet orqali ulanishi kerak. Eng oson va xavfsiz yo'l — **Tailscale** (bepul):
+
+1. Do'kondagi kompyuterga (PosServer.exe turgan) va telefoningizga **Tailscale** ilovasini o'rnating
+   (tailscale.com, Google Play / App Store) va ikkalasida **bitta akkaunt** bilan kiring.
+2. Kompyuterdagi Tailscale belgisidan uning IP manzilini oling (`100.x.x.x`).
+3. Telefonda POS ilovasi → **Sozlamalar → Sinxronlash** → server manzili `http://100.x.x.x:8000`,
+   API kalit — `api_kalit.txt` dagi kalit → **Ulanishni tekshirish** → **Saqlash**.
+   (Do'kon Wi-Fi manzili ham eslab qolinadi — dastur qaysi biri ishlasa, o'shandan foydalanadi.)
+4. Ilovada **Monitoring** bo'limini oching: u ochiq turganda har **5 soniyada** yangilanadi —
+   har bir filialning bugungi savdosi, cheklar soni, foyda, kam qoldiqli tovarlar, oxirgi cheklar
+   (qaysi kassir, qancha, qaysi to'lov) va bugungi o'zgarishlar ko'rinadi.
+
+Kassalar har bir savdodan 3 soniya keyin serverga yuboradi, shuning uchun telefonda savdo deyarli
+darhol paydo bo'ladi. Telefon internetsiz qolsa — oxirgi olingan ma'lumot ko'rinib turadi.
+
+### 6.7. Server zaxira nusxasi
 
 ```bash
 docker compose exec -T db pg_dump -U pos pos > zaxira_$(date +%F).sql     # nusxa olish
@@ -313,7 +331,24 @@ drayverdagi shrift/masshtab sozlamalari ta'sir qilmaydi.
 2. Printer IP'si do'kon tarmog'iga mos bo'lmasa, ishlab chiqaruvchi utilitasi bilan o'zgartiring.
 3. Ilovada: **Tarmoq** → IP `192.168.1.87`, port `9100` → **Sinov cheki**.
 
-### 7.5. Chek matni
+### 7.5. Telefondan kompyuter printeriga (server orqali)
+Telefon chekni Bluetooth'siz, **PosServer.exe** orqali kompyuterga ulangan printerdan chiqaradi
+(Wi-Fi yoki Tailscale orqali — internet bo'lsa boshqa joydan ham).
+1. Printer kompyuterga ulangan va Windows'ga o'rnatilgan bo'lsin, PosServer.exe ishlab tursin.
+2. Telefonda sinxronlash ulangan bo'lsin (**Sozlamalar → Sinxronlash**, "Ulanishni tekshirish").
+3. **Sozlamalar → Printerlar → 1-printer** → Ulanish turi: **Kompyuter printeri (server orqali)**.
+4. 🔍 tugmasini bosing — kompyuterdagi printerlar chiqadi, keraklisini tanlang → **Sinov cheki**.
+
+### 7.6. Tovar yorlig'i (shtrix/QR-kod) — XP-245B va boshqa etiketka printerlari
+Tovar kartasida shtrix-kod yonidagi 🖨 tugmasi (kompyuterda ham, telefonda ham): shtrix yoki QR,
+soni, nom va narx tanlanadi. Standart holatda **2-printer**ga chiqadi.
+1. **Sozlamalar → Printerlar → 2-printer** → **Yorliq (etiketka) printeri**.
+2. Etiketka o'lchami: masalan **38 × 35 mm**, oralig'i (gap) **2 mm**.
+3. Ulanish: printer kompyuterga USB bilan ulangan bo'lsa — kompyuterda **USB / tizim printeri**
+   (Windows'dagi printer nomi, masalan `Xprinter XP-245B`), telefonda — **Kompyuter printeri (server orqali)**.
+4. **Sinov yorlig'i** ni bosing. Yorliq printeri TSPL buyruqlarini qabul qiladi (XP-245B, XP-365B, TSC).
+
+### 7.7. Chek matni
 Ko'p arzon termoprinterlarda o'zbek harflari (oʻ, gʻ) yo'q. Ilova chekdagi matnni avtomatik
 oddiy lotin harflariga (o', g') o'giradi, shuning uchun chek har qanday printerda to'g'ri chiqadi.
 Do'kon nomi, manzil, telefon, STIR va chek pastidagi matn: **Sozlamalar → Do'kon va chek**.
@@ -371,6 +406,34 @@ qarz deb ko'rsatiladi (yashil); firma pulni qaytarganda **"Firmadan pul olish"**
 bosing — agent barmog'i bilan telefon ekraniga imzo chekadi. Imzo to'lovlar ro'yxatida ko'rinadi (bosilsa kattalashadi)
 va boshqa qurilmalarga ham o'tadi.
 
+### 8.6. Filiallar
+
+**Sozlamalar → Filiallar** (faqat bosh admin) bo'limida filial qo'shiladi. Filial ikkita va undan ko'p
+bo'lsa, yuqori panelning chap tomonida **filial tanlagich** paydo bo'ladi.
+
+- **Tovarlar, shtrix-kodlar, kategoriyalar va firmalar** — hamma filialda bir xil (bir marta kiritiladi).
+- **Savdo tarixi, ombordagi qoldiq, kirimlar, firmalarga qarz, dashboard, mavsumiy statistika va
+  o'zgarishlar jurnali** — har bir filialda **alohida**. Filialni almashtirsangiz, shu filialniki ko'rinadi.
+- Har bir kassa (qurilma) qaysi filialda ishlasa, o'sha filial tanlab qo'yiladi — savdo shu filialga yoziladi.
+- Tovar kartasida boshqa filiallardagi qoldiq ham ko'rinadi.
+
+**Ruxsatlar.** **Xodimlar** bo'limida xodimni ochib, "Barcha filiallarda shu rol" ni o'chirsangiz, har bir filial
+uchun alohida rol (Admin / Kassir / Omborchi yoki "Ruxsat yo'q") tanlanadi. Masalan, kassir faqat o'z
+filialida ishlaydi; filial mudiri faqat o'z filialida Admin. Filiallar va xodimlarni faqat **bosh admin**
+(barcha filiallarda Admin) boshqaradi. Xodim ruxsati bo'lmagan filialdagi qurilmaga kirsa, dastur uni
+ruxsati bor filialga o'tkazadi.
+
+> Filiallar ishlashi uchun **barcha qurilmalardagi ilovani va PosServer.exe ni yangilang** (eski server
+> filiallar ro'yxatini qabul qilmaydi).
+
+### 8.7. O'zgarishlar jurnali
+
+**O'zgarishlar** bo'limida (Admin va Omborchi) tanlangan kunda dasturda nima bo'lgani ko'rinadi:
+qo'shilgan, o'zgartirilgan va o'chirilgan tovarlar, narx o'zgarishlari (eski → yangi narx), omborga kirim,
+hisobdan chiqarish va firmaga qaytarish, inventarizatsiya, savdo va qaytarilgan cheklar, firmalarga
+to'lovlar, xodim va filial o'zgarishlari — kim va qachon qilgani bilan. Yuqorida kunlik yig'indi raqamlar,
+pastda to'liq ro'yxat (turi bo'yicha filtrlash mumkin). Monitoring sahifasida bugungi oxirgi o'zgarishlar ham chiqadi.
+
 ---
 
 ## 9. Birinchi ishga tushirish
@@ -419,6 +482,12 @@ o'chiring (2–4-bo'limlardagi yo'llar), shunda toza baza bilan boshlanadi.
 | **Enter** / **Esc** | Tasdiqlash / bekor qilish |
 
 ---
+
+### 10.1. Nasiya (mijoz qarzlari)
+
+- **Savdoda:** To'lov → **Nasiya** (F5) → mijozni tanlang yoki yangi qo'shing → hozir to'lanadigan naqd/karta summasini kiriting; qolgani mijoz qarziga yoziladi.
+- **Qarzlar → Mijozlar (nasiya):** har bir mijozning qarzi va daftari. "To'lov qabul qilish" — qarzni kamaytiradi; "Qarz yozish" — eski (daftardagi) qarzni kiritish. Xato to'lovni bekor qilish uchun qatorni uzoq bosing.
+- Nasiya chek qaytarilsa, qarz ham avtomatik kamayadi. Mijozlar barcha filiallarda umumiy, qarz esa har filialda alohida.
 
 ## 11. Muammolar va yechimlar
 

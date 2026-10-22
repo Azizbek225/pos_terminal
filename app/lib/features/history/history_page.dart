@@ -34,7 +34,7 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
     _filter = SaleFilter(fromMs: r.fromMs, toMs: r.toMs, limit: 2000);
     // Kassir faqat o'z cheklarini ko'radi.
     final user = ref.read(authProvider);
-    if (user != null && UserRole.fromCode(user.role) == UserRole.cashier) {
+    if (user != null && ref.read(currentRoleProvider) == UserRole.cashier) {
       _filter = _filter.copyWith(cashierId: () => user.id);
     }
   }
@@ -208,5 +208,6 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
         PaymentType.card => Icons.credit_card,
         PaymentType.transfer => Icons.swap_horiz,
         PaymentType.mixed => Icons.call_split,
+        PaymentType.debt => Icons.menu_book_outlined,
       };
 }

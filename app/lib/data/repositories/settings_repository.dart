@@ -16,6 +16,7 @@ class SettingKeys {
 
   static const deviceId = 'device.id';
   static const deviceCode = 'device.code'; // Chek raqami prefiksi: K1, K2, T1...
+  static const branchId = 'device.branch'; // Qurilmaning joriy filiali
 
   static const dailyTarget = 'target.daily';
   static const targetCheckHour = 'target.checkHour';
@@ -38,6 +39,7 @@ class SettingKeys {
 
   static const themeMode = 'ui.theme'; // system | light | dark
   static const frequentDays = 'ui.frequentDays'; // 7 | 30
+  static const uiScale = 'ui.scale'; // 1 | 0.8 | 0.7 — ekran masshtabi
 }
 
 class SettingsRepository {

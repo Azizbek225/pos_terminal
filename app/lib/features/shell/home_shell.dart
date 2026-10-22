@@ -8,7 +8,9 @@ import '../../core/constants.dart';
 import '../../data/database.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../state/providers.dart';
+import '../activity/activity_page.dart';
 import '../alerts/alerts_page.dart';
+import '../monitoring/monitoring_page.dart';
 import '../dashboard/dashboard_page.dart';
 import '../history/history_page.dart';
 import '../inventory/inventory_page.dart';
@@ -21,24 +23,29 @@ import 'top_panel.dart';
 
 /// Navigatsiya bo'limi.
 class _Dest {
-  const _Dest(this.label, this.icon, this.builder, this.roles);
+  const _Dest(this.label, this.icon, this.builder, this.roles, {this.ownerOnly = false});
   final String label;
   final IconData icon;
   final Widget Function() builder;
   final Set<UserRole> roles;
+
+  /// Faqat bosh admin (barcha filiallarda Admin).
+  final bool ownerOnly;
 }
 
 final _destinations = <_Dest>[
   _Dest('Savdo', Icons.point_of_sale, () => const PosPage(), {UserRole.admin, UserRole.cashier}),
+  _Dest('Monitoring', Icons.monitor_heart_outlined, () => const MonitoringPage(), {UserRole.admin}),
   _Dest('Dashboard', Icons.dashboard_outlined, () => const DashboardPage(), {UserRole.admin}),
   _Dest('Ombor', Icons.inventory_2_outlined, () => const InventoryPage(), {UserRole.admin, UserRole.storekeeper}),
   _Dest('Tarix', Icons.receipt_long_outlined, () => const HistoryPage(), {UserRole.admin, UserRole.cashier}),
   _Dest('Qarzlar', Icons.account_balance_wallet_outlined, () => const DebtsPage(),
       {UserRole.admin, UserRole.storekeeper}),
+  _Dest("O'zgarishlar", Icons.manage_history, () => const ActivityPage(), {UserRole.admin, UserRole.storekeeper}),
   _Dest('Mavsumiy', Icons.eco_outlined, () => const SeasonalPage(), {UserRole.admin, UserRole.storekeeper}),
   _Dest('Alertlar', Icons.notifications_outlined, () => const AlertsPage(),
       {UserRole.admin, UserRole.cashier, UserRole.storekeeper}),
-  _Dest('Xodimlar', Icons.people_outline, () => const UsersPage(), {UserRole.admin}),
+  _Dest('Xodimlar', Icons.people_outline, () => const UsersPage(), {UserRole.admin}, ownerOnly: true),
   _Dest('Sozlamalar', Icons.settings_outlined, () => const SettingsPage(), {UserRole.admin}),
 ];
 
@@ -65,6 +72,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   @override
   void initState() {
     super.initState();
+    // Xodim ruxsatlari boshqa qurilmada o'zgarsa (sinxronlash) — shu yerda ham.
+    ref.listenManual(usersProvider, (_, next) {
+      final list = next.value;
+      if (list != null) ref.read(authProvider.notifier).refresh(list);
+    });
     // Yangi alertlarni darhol ekranda ko'rsatish.
     _alertSub = ref.read(alertServiceProvider).onNewAlert.listen((a) {
       if (!mounted) return;
@@ -86,8 +98,11 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
-    final role = ref.watch(currentRoleProvider) ?? UserRole.cashier;
-    final dests = _destinations.where((d) => d.roles.contains(role)).toList();
+    final role = ref.watch(currentRoleProvider);
+    final owner = ref.watch(isOwnerProvider);
+    final branch = ref.watch(currentBranchProvider);
+    if (role == null) return const _NoAccessPage();
+    final dests = _destinations.where((d) => d.roles.contains(role) && (!d.ownerOnly || owner)).toList();
     if (_index >= dests.length) _index = 0;
 
     ref.listen(shellNavProvider, (_, label) {
@@ -96,7 +111,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     });
 
     final wide = MediaQuery.sizeOf(context).width >= 900;
-    final page = KeyedSubtree(key: ValueKey(dests[_index].label), child: dests[_index].builder());
+    // Filial almashsa sahifa noldan quriladi (eski filial ma'lumoti qolmasligi uchun).
+    final page = KeyedSubtree(key: ValueKey('${dests[_index].label}@$branch'), child: dests[_index].builder());
 
     if (wide) {
       return Scaffold(
@@ -173,6 +189,41 @@ class _HomeShellState extends ConsumerState<HomeShell> {
               label: selectedInPrimary ? 'Yana' : dests[_index].label,
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Xodimga joriy filialda ruxsat yo'q (masalan, ruxsati boshqa qurilmada olib tashlandi).
+class _NoAccessPage extends ConsumerWidget {
+  const _NoAccessPage();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final branches = ref.watch(accessibleBranchesProvider);
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: ListView(shrinkWrap: true, padding: const EdgeInsets.all(24), children: [
+              const Icon(Icons.lock_outline, size: 48),
+              const SizedBox(height: 12),
+              Text("Bu filialda sizga ruxsat yo'q", textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 16),
+              for (final b in branches)
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.store_outlined),
+                    title: Text(b.name),
+                    onTap: () => ref.read(currentBranchProvider.notifier).select(b.id),
+                  ),
+                ),
+              TextButton(onPressed: () => ref.read(authProvider.notifier).logout(), child: const Text('Chiqish')),
+            ]),
+          ),
+        ),
       ),
     );
   }

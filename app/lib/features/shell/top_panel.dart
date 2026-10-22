@@ -67,6 +67,7 @@ class TopPanel extends ConsumerWidget {
           padding: EdgeInsets.symmetric(horizontal: 12, vertical: compact ? 4 : 8),
           child: Row(
             children: [
+              _BranchSelector(compact: compact),
               Expanded(
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -107,6 +108,54 @@ class TopPanel extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Joriy filial va uni almashtirish (filial bittadan ko'p bo'lsa).
+class _BranchSelector extends ConsumerWidget {
+  const _BranchSelector({required this.compact});
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final all = ref.watch(branchesProvider).value ?? const [];
+    if (all.where((b) => b.isActive).length < 2) return const SizedBox.shrink();
+    final branches = ref.watch(accessibleBranchesProvider);
+    final current = ref.watch(currentBranchProvider);
+    final name = ref.watch(currentBranchNameProvider);
+    final theme = Theme.of(context);
+    final chip = Container(
+      constraints: BoxConstraints(maxWidth: compact ? 130 : 220),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.store, size: 20, color: theme.colorScheme.onPrimaryContainer),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(name, overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold, color: theme.colorScheme.onPrimaryContainer)),
+        ),
+        if (branches.length > 1) Icon(Icons.arrow_drop_down, color: theme.colorScheme.onPrimaryContainer),
+      ]),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: branches.length < 2
+          ? Tooltip(message: 'Filial', child: chip)
+          : PopupMenuButton<String>(
+              tooltip: 'Filialni tanlash',
+              onSelected: (id) => ref.read(currentBranchProvider.notifier).select(id),
+              itemBuilder: (_) => [
+                for (final b in branches)
+                  CheckedPopupMenuItem(value: b.id, checked: b.id == current, child: Text(b.name)),
+              ],
+              child: chip,
+            ),
     );
   }
 }

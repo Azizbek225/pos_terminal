@@ -11,6 +11,7 @@ import '../../services/sync/server_discovery.dart';
 import '../../core/formatters.dart';
 import '../../state/providers.dart';
 import '../shell/common_widgets.dart';
+import 'branches_section.dart';
 
 /// Sozlamalar: do'kon, printerlar, alertlar, sinxronlash, ko'rinish, ma'lumotlar.
 class SettingsPage extends ConsumerWidget {
@@ -27,6 +28,10 @@ class SettingsPage extends ConsumerWidget {
         children: [
           _StoreSection(values: s),
           const SizedBox(height: 16),
+          if (ref.watch(isOwnerProvider)) ...[
+            const BranchesSection(),
+            const SizedBox(height: 16),
+          ],
           const _PrintersSection(),
           const SizedBox(height: 16),
           _AlertsSection(values: s),
@@ -168,6 +173,24 @@ class _ViewSection extends ConsumerWidget {
             onSelectionChanged: (s) => repo.set(SettingKeys.themeMode, s.first),
           ),
           const SizedBox(height: 12),
+          const Text('Masshtab (yozuv va tugmalar o\'lchami)'),
+          const SizedBox(height: 6),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: '1', label: Text('100%')),
+              ButtonSegment(value: '0.8', label: Text('80%')),
+              ButtonSegment(value: '0.7', label: Text('70%')),
+            ],
+            selected: {
+              switch (values[SettingKeys.uiScale]) {
+                '0.8' => '0.8',
+                '0.7' => '0.7',
+                _ => '1',
+              },
+            },
+            onSelectionChanged: (s) => repo.set(SettingKeys.uiScale, s.first),
+          ),
+          const SizedBox(height: 12),
           const Text('"Tez-tez sotiladigan" davri'),
           const SizedBox(height: 6),
           SegmentedButton<String>(
@@ -259,6 +282,9 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
   final _name = TextEditingController();
   final _address = TextEditingController();
   final _port = TextEditingController(text: '9100');
+  final _labelW = TextEditingController(text: '38');
+  final _labelH = TextEditingController(text: '35');
+  final _labelGap = TextEditingController(text: '2');
   bool _loaded = false;
   bool _busy = false;
   List<String> _found = [];
@@ -273,6 +299,9 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
         _name.text = c.name;
         _address.text = c.address;
         _port.text = '${c.port}';
+        _labelW.text = _num(c.labelWidthMm);
+        _labelH.text = _num(c.labelHeightMm);
+        _labelGap.text = _num(c.labelGapMm);
         _loaded = true;
       });
     });
@@ -283,11 +312,23 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
     _name.dispose();
     _address.dispose();
     _port.dispose();
+    _labelW.dispose();
+    _labelH.dispose();
+    _labelGap.dispose();
     super.dispose();
   }
 
-  PrinterConfig get _current =>
-      _cfg.copyWith(name: _name.text.trim(), address: _address.text.trim(), port: int.tryParse(_port.text) ?? 9100);
+  static String _num(double v) => v == v.roundToDouble() ? v.toInt().toString() : '$v';
+  static double? _mm(TextEditingController c) => double.tryParse(c.text.trim().replaceAll(',', '.'));
+
+  PrinterConfig get _current => _cfg.copyWith(
+        name: _name.text.trim(),
+        address: _address.text.trim(),
+        port: int.tryParse(_port.text) ?? 9100,
+        labelWidthMm: (_mm(_labelW) ?? 38).clamp(15, 120).toDouble(),
+        labelHeightMm: (_mm(_labelH) ?? 35).clamp(10, 200).toDouble(),
+        labelGapMm: (_mm(_labelGap) ?? 2).clamp(0, 10).toDouble(),
+      );
 
   Future<void> _save() async {
     await ref.read(printerServiceProvider).saveConfig(widget.slot, _current);
@@ -316,10 +357,19 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
         _found = list.map((e) => '${e.$1}|${e.$2}').toList();
       } else if (_cfg.connection == PrinterConnection.system) {
         _found = await service.systemPrinters();
+      } else if (_cfg.connection == PrinterConnection.server) {
+        _found = await service.serverPrinters();
       }
       if (_found.isEmpty && mounted) {
-        showMessage(context, 'Printer topilmadi. Bluetooth printerni avval telefon sozlamalarida juftlang.');
+        showMessage(
+          context,
+          _cfg.connection == PrinterConnection.server
+              ? 'Kompyuterda printer topilmadi. Printer Windows\'ga o\'rnatilganini tekshiring.'
+              : 'Printer topilmadi. Bluetooth printerni avval telefon sozlamalarida juftlang.',
+        );
       }
+    } catch (e) {
+      if (mounted) showMessage(context, e.toString(), error: true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -337,6 +387,7 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
       PrinterConnection.network => 'IP manzil (masalan 192.168.1.100)',
       PrinterConnection.bluetooth => 'Bluetooth MAC manzil',
       PrinterConnection.system => 'Printer nomi (Windows/macOS/Linux) yoki /dev/usb/lp0',
+      PrinterConnection.server => "Kompyuterdagi printer nomi (🔍 bilan tanlang)",
       PrinterConnection.none => 'Manzil',
     };
     return Card(
@@ -358,6 +409,19 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
               }),
             ),
             if (conn != PrinterConnection.none) ...[
+              const SizedBox(height: 10),
+              SegmentedButton<PrinterKind>(
+                segments: [
+                  for (final k in PrinterKind.values)
+                    ButtonSegment(
+                      value: k,
+                      label: Text(k.title),
+                      icon: Icon(k == PrinterKind.label ? Icons.label_outline : Icons.receipt_long_outlined),
+                    ),
+                ],
+                selected: {_cfg.kind},
+                onSelectionChanged: (s) => setState(() => _cfg = _cfg.copyWith(kind: s.first)),
+              ),
               const SizedBox(height: 10),
               TextField(
                 controller: _name,
@@ -383,7 +447,9 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
                       ),
                     ),
                   ],
-                  if (conn == PrinterConnection.bluetooth || conn == PrinterConnection.system)
+                  if (conn == PrinterConnection.bluetooth ||
+                      conn == PrinterConnection.system ||
+                      conn == PrinterConnection.server)
                     IconButton(
                       tooltip: 'Qidirish',
                       onPressed: _busy ? null : _discover,
@@ -411,7 +477,25 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
                   ],
                 ),
               const SizedBox(height: 10),
-              Wrap(
+              if (_cfg.kind == PrinterKind.label)
+                Row(children: [
+                  for (final (c, label) in [
+                    (_labelW, 'Eni, mm'),
+                    (_labelH, "Bo'yi, mm"),
+                    (_labelGap, "Oralig'i, mm"),
+                  ]) ...[
+                    if (c != _labelW) const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: c,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: InputDecoration(labelText: label),
+                      ),
+                    ),
+                  ],
+                ])
+              else
+                Wrap(
                 spacing: 12,
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
@@ -450,7 +534,7 @@ class _PrinterCardState extends ConsumerState<_PrinterCard> {
                   OutlinedButton.icon(
                     onPressed: _busy ? null : _test,
                     icon: const Icon(Icons.print),
-                    label: const Text('Sinov cheki'),
+                    label: Text(_cfg.kind == PrinterKind.label ? "Sinov yorlig'i" : 'Sinov cheki'),
                   ),
                 const SizedBox(width: 8),
                 FilledButton(onPressed: _save, child: const Text('Saqlash')),

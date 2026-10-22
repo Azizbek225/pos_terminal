@@ -5,21 +5,42 @@ import '../../core/formatters.dart';
 import '../../data/repositories/supplier_repository.dart';
 import '../../state/providers.dart';
 import '../shell/common_widgets.dart';
+import '../customers/customer_debts_tab.dart';
 import 'supplier_detail_page.dart';
 import 'supplier_widgets.dart';
 
-/// Qarzlar oynasi: umumiy qarzdorlik va firmalar ro'yxati (eng ko'p qarz tepada).
-/// Firma bosilsa — uning kirimlari (prays-listlar), to'lovlari va akt-sverkasi.
-class DebtsPage extends ConsumerStatefulWidget {
+/// Qarzlar oynasi: "Firmalar" (biz firmalarga qarz) va "Mijozlar" (mijozlar
+/// bizga nasiya qarzi).
+class DebtsPage extends StatelessWidget {
   const DebtsPage({super.key});
 
   @override
-  ConsumerState<DebtsPage> createState() => _DebtsPageState();
+  Widget build(BuildContext context) {
+    return const DefaultTabController(
+      length: 2,
+      child: Column(children: [
+        TabBar(tabs: [
+          Tab(icon: Icon(Icons.business_outlined), text: 'Firmalar'),
+          Tab(icon: Icon(Icons.people_alt_outlined), text: 'Mijozlar (nasiya)'),
+        ]),
+        Expanded(child: TabBarView(children: [SupplierDebtsTab(), CustomerDebtsTab()])),
+      ]),
+    );
+  }
+}
+
+/// Firmalar: umumiy qarzdorlik va firmalar ro'yxati (eng ko'p qarz tepada).
+/// Firma bosilsa — uning kirimlari (prays-listlar), to'lovlari va akt-sverkasi.
+class SupplierDebtsTab extends ConsumerStatefulWidget {
+  const SupplierDebtsTab({super.key});
+
+  @override
+  ConsumerState<SupplierDebtsTab> createState() => _DebtsPageState();
 }
 
 enum _Filter { all, debt, closed }
 
-class _DebtsPageState extends ConsumerState<DebtsPage> {
+class _DebtsPageState extends ConsumerState<SupplierDebtsTab> {
   String _q = '';
   _Filter _filter = _Filter.all;
 
@@ -71,6 +92,7 @@ class _DebtsPageState extends ConsumerState<DebtsPage> {
 
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'supplier_fab',
         onPressed: () => openSupplierForm(context, ref),
         icon: const Icon(Icons.add_business_outlined),
         label: const Text('Yangi firma'),

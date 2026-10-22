@@ -147,3 +147,26 @@ def test_supplier_entities_sync(client):
     item = next(c for c in pulled if c["id"] == "spi1")
     assert item["data"]["qty"] == 10
     assert {c["entity"] for c in pulled} == {"suppliers", "supplier_purchases", "supplier_purchase_items", "supplier_payments"}
+
+
+def test_print_via_server(client, monkeypatch):
+    from app import printers
+
+    sent = []
+    monkeypatch.setattr(printers, "list_printers", lambda: ["XP-80C", "Label"])
+    monkeypatch.setattr(printers, "print_raw", lambda name, data, doc_name="": sent.append((name, data)))
+
+    assert client.get("/api/printers").status_code == 401
+    assert client.get("/api/printers", headers=H).json() == {"printers": ["XP-80C", "Label"]}
+
+    r = client.post("/api/print", params={"printer": "XP-80C"}, content=b"\x1b@chek", headers=H)
+    assert r.status_code == 200, r.text
+    assert sent == [("XP-80C", b"\x1b@chek")]
+    assert client.post("/api/print", params={"printer": "XP-80C"}, content=b"", headers=H).status_code == 400
+
+    def fail(name, data, doc_name=""):
+        raise printers.PrintError('Printer topilmadi: "Yo\'q"')
+
+    monkeypatch.setattr(printers, "print_raw", fail)
+    r = client.post("/api/print", params={"printer": "Yo'q"}, content=b"x", headers=H)
+    assert r.status_code == 502 and "topilmadi" in r.json()["detail"]

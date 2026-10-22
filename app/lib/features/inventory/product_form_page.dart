@@ -10,10 +10,12 @@ import '../../core/formatters.dart';
 import '../../core/season.dart';
 import '../../data/database.dart';
 import '../../data/repositories/stock_repository.dart';
+import '../../services/printing/label.dart';
 import '../../services/product_images.dart';
 import '../../services/scanner/camera_scanner.dart';
 import '../../state/providers.dart';
 import '../shell/common_widgets.dart';
+import 'label_print_dialog.dart';
 
 /// Tovar kartasini ochish (yangi yoki tahrirlash). Qaytaradi: saqlangan tovar ID si.
 Future<String?> openProductForm(BuildContext context, {Product? product, String? barcode}) {
@@ -50,6 +52,23 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   bool get _isNew => widget.product == null;
 
   TextEditingController c(String key) => _c.putIfAbsent(key, TextEditingController.new);
+
+  /// Yorliq chop etish: kod bo'lmasa — ichki shtrix-kod yaratiladi.
+  Future<void> _printLabel() async {
+    var code = _t('barcode');
+    if (code.isEmpty) {
+      code = await ref.read(productRepoProvider).generateInternalBarcode();
+      setState(() => c('barcode').text = code);
+    }
+    if (!mounted) return;
+    if (code != (widget.product?.barcode ?? '')) {
+      showMessage(context, "Yangi shtrix-kod tovar saqlangandan keyin ishlaydi — 'Saqlash' ni unutmang");
+    }
+    await showLabelPrintDialog(
+      context,
+      LabelData(code: code, name: _t('shortName').isEmpty ? _t('name') : _t('shortName'), price: _i('sale')),
+    );
+  }
 
   @override
   void initState() {
@@ -309,6 +328,11 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                           setState(() => c('barcode').text = code);
                         },
                       ),
+                      IconButton(
+                        tooltip: 'Shtrix/QR-kod yorlig\'ini chop etish',
+                        icon: const Icon(Icons.print_outlined),
+                        onPressed: _printLabel,
+                      ),
                     ])),
                 text('barcode2', "Qo'shimcha shtrix-kod (qadoq)"),
               ]),
@@ -354,10 +378,11 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                   text('initialStock', "Boshlang'ich qoldiq", number: true, suffix: _unit)
                 else
                   InputDecorator(
-                    decoration: const InputDecoration(labelText: 'Joriy qoldiq'),
+                    decoration: const InputDecoration(labelText: 'Joriy qoldiq (shu filial)'),
                     child: Text('${Fmt.qty(widget.product!.stockQty)} $_unit'),
                   ),
               ]),
+              if (!_isNew) _BranchStock(productId: widget.product!.id, unit: _unit),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 value: _isWeighted,
@@ -410,6 +435,31 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Tovarning boshqa filiallardagi qoldig'i (filial bittadan ko'p bo'lsa).
+class _BranchStock extends ConsumerWidget {
+  const _BranchStock({required this.productId, required this.unit});
+  final String productId;
+  final String unit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final branches = (ref.watch(branchesProvider).value ?? const <Branch>[]).where((b) => b.isActive).toList();
+    if (branches.length < 2) return const SizedBox.shrink();
+    return FutureBuilder<Map<String, double>>(
+      future: ref.read(stockRepoProvider).stockByBranch(productId),
+      builder: (context, snap) {
+        final m = snap.data ?? const <String, double>{};
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Wrap(spacing: 8, runSpacing: 4, children: [
+            for (final b in branches) Chip(label: Text('${b.name}: ${Fmt.qty(m[b.id] ?? 0)} $unit')),
+          ]),
+        );
+      },
     );
   }
 }

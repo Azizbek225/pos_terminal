@@ -102,11 +102,26 @@ class CartState {
 
 /// To'lov ma'lumoti.
 class PaymentInput {
-  const PaymentInput({this.cash = 0, this.card = 0, this.transfer = 0});
+  const PaymentInput({
+    this.cash = 0,
+    this.card = 0,
+    this.transfer = 0,
+    this.debt = 0,
+    this.customerId = '',
+    this.customerName = '',
+  });
 
   final int cash;
   final int card;
   final int transfer;
 
+  /// Nasiya: mijoz qarziga yoziladigan qism.
+  final int debt;
+  final String customerId;
+  final String customerName;
+
   int get totalPaid => cash + card + transfer;
+
+  /// To'langan + qarzga yozilgan.
+  int get covered => totalPaid + debt;
 }

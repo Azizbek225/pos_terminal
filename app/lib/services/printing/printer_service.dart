@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
@@ -9,7 +11,9 @@ import '../../core/constants.dart';
 import '../../data/repositories/sale_repository.dart';
 import '../../data/repositories/settings_repository.dart';
 import 'escpos_builder.dart';
+import 'label.dart';
 import 'printer_config.dart';
+import 'tspl_builder.dart';
 import 'receipt_layout.dart';
 import 'windows_raw_printer.dart';
 
@@ -75,6 +79,10 @@ class PrinterService {
         results.add(PrintResult(slot, false, '$slot-printer sozlanmagan'));
         continue;
       }
+      if (cfg.kind == PrinterKind.label) {
+        results.add(PrintResult(slot, false, '$slot-printer yorliq printeri — chek unga chiqmaydi'));
+        continue;
+      }
       try {
         final lines = ReceiptLayout.build(sale, store, width: cfg.charsPerLine, copy: copy);
         final drawer = cfg.openDrawer && !copy && sale.sale.paidCash > 0 &&
@@ -94,7 +102,27 @@ class PrinterService {
   Future<void> printTest(int slot) async {
     final cfg = await config(slot);
     if (!cfg.enabled) throw PrintException('$slot-printer sozlanmagan');
-    await send(cfg, await EscPosBuilder.testPage(cfg));
+    await send(cfg, cfg.kind == PrinterKind.label ? TsplBuilder.testLabel(cfg) : await EscPosBuilder.testPage(cfg));
+  }
+
+  /// Tovar yorliqlarini [slot]-printerga chop etish: yorliq printeriga TSPL,
+  /// chek printeriga ESC/POS buyruqlari printerning o'z ulanishi (USB,
+  /// tarmoq, Bluetooth, server) orqali yuboriladi.
+  Future<void> printLabels(
+    int slot,
+    LabelData data, {
+    required int count,
+    LabelCodeKind kind = LabelCodeKind.barcode,
+    bool showName = true,
+    bool showPrice = true,
+  }) async {
+    final cfg = await config(slot);
+    if (!cfg.enabled) throw PrintException('$slot-printer sozlanmagan (Sozlamalar → Printerlar)');
+    final bytes = cfg.kind == PrinterKind.label
+        ? TsplBuilder.labels(data, cfg, count: count, kind: kind, showName: showName, showPrice: showPrice)
+        : await EscPosBuilder.labels(data, cfg,
+            count: count, kind: kind, showName: showName, showPrice: showPrice);
+    await send(cfg, bytes);
   }
 
   /// Baytlarni printerga yuborish (ulanish turiga qarab).
@@ -123,7 +151,53 @@ class PrinterService {
         await _sendBluetooth(cfg.address.trim(), bytes);
       case PrinterConnection.system:
         await _sendSystem(cfg.address.trim(), bytes);
+      case PrinterConnection.server:
+        await _sendServer(cfg.address.trim(), bytes);
     }
+  }
+
+  /// Sinxronlash serveri manzili va kalitlari (Sozlamalar → Sinxronlash).
+  Future<(Uri, Map<String, String>)> _server(String path, [Map<String, String>? query]) async {
+    var base = ((await settings.get(SettingKeys.syncUrl)) ?? '').trim();
+    if (base.isEmpty) throw PrintException('Server manzili kiritilmagan (Sozlamalar → Sinxronlash)');
+    if (base.endsWith('/')) base = base.substring(0, base.length - 1);
+    final headers = {
+      'X-API-Key': (await settings.get(SettingKeys.syncApiKey)) ?? '',
+      'X-Device-Id': await settings.deviceId(),
+    };
+    return (Uri.parse('$base$path').replace(queryParameters: query), headers);
+  }
+
+  Future<void> _sendServer(String printer, List<int> bytes) async {
+    final (uri, headers) = await _server('/api/print', {'printer': printer});
+    final http.Response r;
+    try {
+      r = await http
+          .post(uri, headers: {...headers, 'Content-Type': 'application/octet-stream'}, body: bytes)
+          .timeout(const Duration(seconds: 15));
+    } on TimeoutException {
+      throw PrintException('Server javob bermadi');
+    } catch (e) {
+      throw PrintException('Serverga ulanib bo\'lmadi: $e');
+    }
+    if (r.statusCode == 200) return;
+    if (r.statusCode == 401) throw PrintException('API kalit noto\'g\'ri (Sozlamalar → Sinxronlash)');
+    if (r.statusCode == 404) throw PrintException('PosServer eski — yangi versiyasini o\'rnating');
+    var detail = r.body;
+    try {
+      detail = (jsonDecode(r.body) as Map)['detail']?.toString() ?? detail;
+    } catch (_) {}
+    throw PrintException('Kompyuter printeri: $detail');
+  }
+
+  /// Server turgan kompyuterdagi printerlar nomi.
+  Future<List<String>> serverPrinters() async {
+    final (uri, headers) = await _server('/api/printers');
+    final r = await http.get(uri, headers: headers).timeout(const Duration(seconds: 25));
+    if (r.statusCode == 401) throw PrintException('API kalit noto\'g\'ri (Sozlamalar → Sinxronlash)');
+    if (r.statusCode == 404) throw PrintException('PosServer eski — yangi versiyasini o\'rnating');
+    if (r.statusCode != 200) throw PrintException('Server xatosi: ${r.statusCode}');
+    return ((jsonDecode(r.body) as Map)['printers'] as List? ?? const []).cast<String>();
   }
 
   Future<void> _sendNetwork(String host, int port, List<int> bytes) async {

@@ -10,7 +10,11 @@ enum PrinterConnection {
 
   /// Kompyuterga USB orqali ulangan va tizimga o'rnatilgan printer
   /// (Windows: spooler RAW, macOS/Linux: CUPS `lp -o raw`, yoki /dev/usb/lp0).
-  system('system', 'USB / tizim printeri');
+  system('system', 'USB / tizim printeri'),
+
+  /// Server (PosServer.exe) turgan kompyuterga ulangan printer: telefon chekni
+  /// sinxronlash serveri orqali yuboradi (Wi-Fi yoki Tailscale orqali).
+  server('server', 'Kompyuter printeri (server orqali)');
 
   const PrinterConnection(this.code, this.label);
   final String code;
@@ -18,6 +22,20 @@ enum PrinterConnection {
 
   static PrinterConnection fromCode(String? c) =>
       PrinterConnection.values.firstWhere((x) => x.code == c, orElse: () => PrinterConnection.none);
+}
+
+/// Printer turi: chek (ESC/POS) yoki yorliq/etiketka printeri (TSPL —
+/// Xprinter XP-245B, XP-365B, TSC va o'xshashlar).
+enum PrinterKind {
+  receipt('receipt', 'Chek printeri'),
+  label('label', 'Yorliq (etiketka) printeri');
+
+  const PrinterKind(this.code, this.title);
+  final String code;
+  final String title;
+
+  static PrinterKind fromCode(String? c) =>
+      PrinterKind.values.firstWhere((x) => x.code == c, orElse: () => PrinterKind.receipt);
 }
 
 /// Bitta printer sozlamasi. Ilovada 2 ta printer slot bor (masalan:
@@ -33,6 +51,10 @@ class PrinterConfig {
     this.cut = true,
     this.openDrawer = false,
     this.codeTable = 'CP866',
+    this.kind = PrinterKind.receipt,
+    this.labelWidthMm = 38,
+    this.labelHeightMm = 35,
+    this.labelGapMm = 2,
   });
 
   final PrinterConnection connection;
@@ -53,6 +75,13 @@ class PrinterConfig {
   final bool openDrawer;
   final String codeTable;
 
+  final PrinterKind kind;
+
+  /// Yorliq printeri uchun etiketka o'lchami va oralig'i (mm).
+  final double labelWidthMm;
+  final double labelHeightMm;
+  final double labelGapMm;
+
   bool get enabled => connection != PrinterConnection.none && address.trim().isNotEmpty;
 
   /// Bir qatordagi belgilar soni (Font A).
@@ -68,6 +97,10 @@ class PrinterConfig {
         'cut': cut,
         'openDrawer': openDrawer,
         'codeTable': codeTable,
+        'kind': kind.code,
+        'labelW': labelWidthMm,
+        'labelH': labelHeightMm,
+        'labelGap': labelGapMm,
       };
 
   factory PrinterConfig.fromJson(Map<String, dynamic>? j) {
@@ -82,6 +115,10 @@ class PrinterConfig {
       cut: (j['cut'] as bool?) ?? true,
       openDrawer: (j['openDrawer'] as bool?) ?? false,
       codeTable: (j['codeTable'] as String?) ?? 'CP866',
+      kind: PrinterKind.fromCode(j['kind'] as String?),
+      labelWidthMm: (j['labelW'] as num?)?.toDouble() ?? 38,
+      labelHeightMm: (j['labelH'] as num?)?.toDouble() ?? 35,
+      labelGapMm: (j['labelGap'] as num?)?.toDouble() ?? 2,
     );
   }
 
@@ -94,6 +131,10 @@ class PrinterConfig {
     int? copies,
     bool? cut,
     bool? openDrawer,
+    PrinterKind? kind,
+    double? labelWidthMm,
+    double? labelHeightMm,
+    double? labelGapMm,
   }) =>
       PrinterConfig(
         connection: connection ?? this.connection,
@@ -105,6 +146,10 @@ class PrinterConfig {
         cut: cut ?? this.cut,
         openDrawer: openDrawer ?? this.openDrawer,
         codeTable: codeTable,
+        kind: kind ?? this.kind,
+        labelWidthMm: labelWidthMm ?? this.labelWidthMm,
+        labelHeightMm: labelHeightMm ?? this.labelHeightMm,
+        labelGapMm: labelGapMm ?? this.labelGapMm,
       );
 }
 

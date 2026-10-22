@@ -13,6 +13,7 @@ from .models import Device, ServerInfo, SyncCounter, SyncRecord
 
 # Ilovadagi SyncEntities bilan bir xil bo'lishi shart.
 ENTITIES = (
+    "branches",
     "users",
     "categories",
     "products",
@@ -24,6 +25,8 @@ ENTITIES = (
     "supplier_purchases",
     "supplier_purchase_items",
     "supplier_payments",
+    "customers",
+    "customer_debts",
 )
 
 # O'zgarmas yozuvlar: faqat qo'shiladi, hech qachon yangilanmaydi.
