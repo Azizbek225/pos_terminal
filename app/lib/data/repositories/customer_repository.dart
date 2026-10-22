@@ -239,24 +239,27 @@ class CustomerRepository {
             ]),
       );
 
-  Stream<CustomerDebtSummary> watchSummary() => watchInBranch(branch, (b) {
-        final today = DayRange.today();
-        return db.customSelect(
-          'SELECT COALESCE(SUM(CASE WHEN debt > 0 THEN debt ELSE 0 END), 0) total, '
-          'COALESCE(SUM(CASE WHEN debt > 0 THEN 1 ELSE 0 END), 0) debtors, '
-          '(SELECT COALESCE(-SUM(amount), 0) FROM customer_debts WHERE branch_id = ?1 AND is_deleted = 0 '
-          "AND kind = 'payment' AND created_at >= ?2 AND created_at < ?3) paid_today, "
-          '(SELECT COALESCE(SUM(amount), 0) FROM customer_debts WHERE branch_id = ?1 AND is_deleted = 0 '
-          "AND kind = 'sale' AND created_at >= ?2 AND created_at < ?3) debt_today "
-          'FROM (SELECT customer_id, SUM(amount) debt FROM customer_debts WHERE branch_id = ?1 AND is_deleted = 0 '
-          'GROUP BY customer_id)',
-          variables: [Variable.withString(b), Variable.withInt(today.fromMs), Variable.withInt(today.toMs)],
-          readsFrom: {db.customerDebts},
-        ).watchSingle().map((r) => CustomerDebtSummary(
-              totalDebt: r.read<int>('total'),
-              debtorCount: r.read<int>('debtors'),
-              paidToday: r.read<int>('paid_today'),
-              debtToday: r.read<int>('debt_today'),
-            ));
-      });
+  Stream<CustomerDebtSummary> watchSummary() => watchInBranch(branch, summaryOf);
+
+  /// Istalgan filialning nasiya ko'rsatkichlari (monitoring uchun).
+  Stream<CustomerDebtSummary> summaryOf(String b) {
+    final today = DayRange.today();
+    return db.customSelect(
+      'SELECT COALESCE(SUM(CASE WHEN debt > 0 THEN debt ELSE 0 END), 0) total, '
+      'COALESCE(SUM(CASE WHEN debt > 0 THEN 1 ELSE 0 END), 0) debtors, '
+      '(SELECT COALESCE(-SUM(amount), 0) FROM customer_debts WHERE branch_id = ?1 AND is_deleted = 0 '
+      "AND kind = 'payment' AND created_at >= ?2 AND created_at < ?3) paid_today, "
+      '(SELECT COALESCE(SUM(amount), 0) FROM customer_debts WHERE branch_id = ?1 AND is_deleted = 0 '
+      "AND kind = 'sale' AND created_at >= ?2 AND created_at < ?3) debt_today "
+      'FROM (SELECT customer_id, SUM(amount) debt FROM customer_debts WHERE branch_id = ?1 AND is_deleted = 0 '
+      'GROUP BY customer_id)',
+      variables: [Variable.withString(b), Variable.withInt(today.fromMs), Variable.withInt(today.toMs)],
+      readsFrom: {db.customerDebts},
+    ).watchSingle().map((r) => CustomerDebtSummary(
+          totalDebt: r.read<int>('total'),
+          debtorCount: r.read<int>('debtors'),
+          paidToday: r.read<int>('paid_today'),
+          debtToday: r.read<int>('debt_today'),
+        ));
+  }
 }

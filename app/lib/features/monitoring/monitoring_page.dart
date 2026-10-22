@@ -7,6 +7,7 @@ import '../../core/constants.dart';
 import '../../core/formatters.dart';
 import '../../data/database.dart';
 import '../../data/repositories/activity_repository.dart';
+import '../../data/repositories/customer_repository.dart';
 import '../../data/repositories/stats_repository.dart';
 import '../../services/sync/sync_service.dart';
 import '../../state/providers.dart';
@@ -18,6 +19,12 @@ final _branchTodayProvider = StreamProvider.family<PeriodSummary, String>(
 
 final _branchLowStockProvider =
     StreamProvider.family<int, String>((ref, id) => ref.watch(statsRepoProvider).watchLowStockCount(id));
+
+final _branchCustomerDebtProvider = StreamProvider.family<CustomerDebtSummary, String>(
+    (ref, id) => ref.watch(customerRepoProvider).summaryOf(id));
+
+final _branchSupplierDebtProvider =
+    StreamProvider.family<int, String>((ref, id) => ref.watch(supplierRepoProvider).watchTotalDebtOf(id));
 
 final _recentSalesProvider = StreamProvider<List<Sale>>((ref) {
   final ids = ref.watch(accessibleBranchesProvider).map((b) => b.id).toList();
@@ -71,11 +78,21 @@ class _MonitoringPageState extends ConsumerState<MonitoringPage> {
     final cols = width >= 1300 ? 3 : (width >= 700 ? 2 : 1);
     final names = {for (final b in branches) b.id: b.name};
     var total = 0, count = 0, profit = 0;
+    final fin = _Finance();
     for (final b in branches) {
       final s = ref.watch(_branchTodayProvider(b.id)).value;
       total += s?.total ?? 0;
       count += s?.count ?? 0;
       profit += s?.profit ?? 0;
+      final c = ref.watch(_branchCustomerDebtProvider(b.id)).value;
+      fin
+        ..sales += s?.total ?? 0
+        ..collected += s?.collected ?? 0
+        ..debtSold += s?.debt ?? 0
+        ..debtPaidToday += c?.paidToday ?? 0
+        ..customerDebt += c?.totalDebt ?? 0
+        ..debtors += c?.debtorCount ?? 0
+        ..supplierDebt += ref.watch(_branchSupplierDebtProvider(b.id)).value ?? 0;
     }
 
     return ListView(padding: const EdgeInsets.all(16), children: [
@@ -100,6 +117,8 @@ class _MonitoringPageState extends ConsumerState<MonitoringPage> {
         ),
         const SizedBox(height: 12),
       ],
+      _FinanceCard(fin: fin, branches: branches.length),
+      const SizedBox(height: 12),
       LayoutBuilder(builder: (context, c) {
         final w = (c.maxWidth - (cols - 1) * 12) / cols;
         return Wrap(spacing: 12, runSpacing: 12, children: [
@@ -200,6 +219,66 @@ class _Big extends StatelessWidget {
   }
 }
 
+/// Barcha (ko'rinadigan) filiallar bo'yicha pul holati.
+class _Finance {
+  int sales = 0, collected = 0, debtSold = 0, debtPaidToday = 0;
+  int customerDebt = 0, debtors = 0, supplierDebt = 0;
+
+  /// Bugun kassaga haqiqatda kelgan pul: savdodan olingan + nasiyadan undirilgan.
+  int get cashIn => collected + debtPaidToday;
+}
+
+class _FinanceCard extends StatelessWidget {
+  const _FinanceCard({required this.fin, required this.branches});
+  final _Finance fin;
+  final int branches;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final red = theme.colorScheme.error;
+    final orange = Colors.orange.shade800;
+    final green = Colors.green.shade700;
+    Widget tile(String label, int value, {Color? color, String? hint, IconData? icon}) => SizedBox(
+          width: 230,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              if (icon != null) ...[Icon(icon, size: 16, color: color), const SizedBox(width: 4)],
+              Flexible(child: Text(label, style: theme.textTheme.labelMedium)),
+            ]),
+            Text(Fmt.money(value),
+                style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: color)),
+            if (hint != null) Text(hint, style: theme.textTheme.bodySmall),
+          ]),
+        );
+    return SectionCard(
+      title: branches > 1 ? 'Pul holati ($branches filial)' : 'Pul holati',
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Bugun', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 6),
+        Wrap(spacing: 24, runSpacing: 12, children: [
+          tile('Savdo jami', fin.sales, icon: Icons.point_of_sale),
+          tile("Qo'lga tushgan (daromadga qo'shilgan)", fin.collected,
+              color: green, icon: Icons.check_circle_outline, hint: 'naqd + karta + o\'tkazma'),
+          tile("Nasiyaga ketgan (hali olinmagan)", fin.debtSold,
+              color: orange, icon: Icons.hourglass_bottom, hint: "daromadga qo'shilmagan"),
+          tile('Nasiyadan undirilgan', fin.debtPaidToday, color: green, icon: Icons.call_received),
+          tile('Joriy daromad (kassaga kelgan)', fin.cashIn,
+              color: green, icon: Icons.account_balance_wallet_outlined, hint: "qo'lga tushgan + undirilgan nasiya"),
+        ]),
+        const Divider(height: 28),
+        Text('Qarzlar (umumiy)', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 6),
+        Wrap(spacing: 24, runSpacing: 12, children: [
+          tile('Mijozlardagi nasiyamiz', fin.customerDebt,
+              color: orange, icon: Icons.people_outline, hint: '${fin.debtors} ta mijoz · hali olinmagan'),
+          tile('Firmalarga qarzimiz', fin.supplierDebt, color: red, icon: Icons.local_shipping_outlined),
+        ]),
+      ]),
+    );
+  }
+}
+
 class _BranchCard extends ConsumerWidget {
   const _BranchCard({required this.branch});
   final Branch branch;
@@ -241,6 +320,9 @@ class _BranchCard extends ConsumerWidget {
             Text("${s.count} chek · o'rtacha ${Fmt.money(s.average)}", style: theme.textTheme.bodySmall),
             Text('Foyda: ${Fmt.money(s.profit)} · naqd ${Fmt.money(s.cash)} · karta ${Fmt.money(s.card)}',
                 style: theme.textTheme.bodySmall),
+            if (s.debt > 0)
+              Text('Nasiyaga: ${Fmt.money(s.debt)} (hali olinmagan)',
+                  style: theme.textTheme.bodySmall?.copyWith(color: Colors.orange.shade800)),
             const SizedBox(height: 6),
             Row(children: [
               Icon(Icons.warning_amber_rounded, size: 16, color: low > 0 ? theme.colorScheme.error : Colors.grey),

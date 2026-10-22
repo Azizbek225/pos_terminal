@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_terminal/core/constants.dart';
+import 'package:pos_terminal/core/formatters.dart';
 import 'package:pos_terminal/data/database.dart';
 import 'package:pos_terminal/services/checkout_service.dart';
 import 'package:pos_terminal/state/cart.dart';
@@ -28,6 +29,13 @@ void main() {
     expect(sale.sale.debtAmount, 70000);
     expect(sale.sale.customerName, 'Anvar aka');
     expect(await env.customers.debtOf(c.id), 70000);
+
+    // Monitoring: nasiya qismi daromadga qo'shilmaydi.
+    final today = await env.stats.summaryOf(DayRange.today(), env.branch.id).first;
+    expect(today.total, 100000);
+    expect(today.debt, 70000);
+    expect(today.collected, 30000);
+    expect((await env.customers.summaryOf(env.branch.id).first).totalDebt, 70000);
 
     // Qarz to'lovi va qo'lda yozilgan eski qarz.
     await env.customers.addPayment(c.id, 20000, user: admin);

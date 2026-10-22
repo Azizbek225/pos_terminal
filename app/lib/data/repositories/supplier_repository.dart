@@ -248,6 +248,10 @@ FROM suppliers s WHERE s.is_deleted = 0''';
         });
   }
 
+  /// Istalgan filialda firmalarga umumiy qarzimiz (monitoring uchun).
+  Stream<int> watchTotalDebtOf(String branchId) =>
+      _watchBalances(branchId).map((list) => list.fold(0, (s, b) => b.debt > 0 ? s + b.debt : s));
+
   Stream<DebtSummary> watchSummary() {
     final start = DateTime.now();
     final today = DateTime(start.year, start.month, start.day).millisecondsSinceEpoch;
