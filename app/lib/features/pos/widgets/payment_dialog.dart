@@ -110,7 +110,7 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
       setState(() => _error = "Karta va o'tkazma summasi chekdan oshmasligi kerak");
       return;
     }
-    if (p.totalPaid < widget.total) {
+    if (p.covered < widget.total) {
       setState(() => _error = "To'lov yetarli emas — yana ${Fmt.money(_remaining)} kerak");
       return;
     }
