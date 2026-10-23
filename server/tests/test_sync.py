@@ -170,3 +170,49 @@ def test_print_via_server(client, monkeypatch):
     monkeypatch.setattr(printers, "print_raw", fail)
     r = client.post("/api/print", params={"printer": "Yo'q"}, content=b"x", headers=H)
     assert r.status_code == 502 and "topilmadi" in r.json()["detail"]
+
+
+def test_concurrent_pushes_get_unique_seq(client):
+    """Bir vaqtda bir nechta qurilma yuborsa ham xato yo'q va seq takrorlanmaydi."""
+    import threading
+
+    errors = []
+
+    def dev(n):
+        for b in range(5):
+            changes = [product(f"{n}-{b}-{i}") for i in range(50)]
+            r = client.post("/api/sync/push", json={"device_id": f"d{n}", "changes": changes},
+                            headers={**H, "X-Device-Id": f"d{n}"})
+            if r.status_code != 200:
+                errors.append(r.text)
+
+    threads = [threading.Thread(target=dev, args=(n,)) for n in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    pulled = client.get("/api/sync/pull", params={"since": 0, "limit": 5000}, headers=H).json()["changes"]
+    assert len(pulled) == 1000
+    assert len({c["seq"] for c in pulled}) == 1000
+
+
+def test_migrate_fills_report_columns():
+    """Eski bazaga ts/ref ustunlari qo'shiladi va mavjud yozuvlardan to'ldiriladi."""
+    from sqlalchemy import create_engine, text
+
+    from app import sync
+
+    eng = create_engine("sqlite://")
+    with eng.begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE sync_records (entity VARCHAR(40), id VARCHAR(64), data JSON, updated_at BIGINT, "
+            "device_id VARCHAR(64), deleted BOOLEAN, seq BIGINT, received_at BIGINT, PRIMARY KEY (entity, id))"
+        ))
+        conn.execute(text(
+            "INSERT INTO sync_records VALUES ('sale_items', 'i1', '{\"sale_id\": \"s1\", \"created_at\": 5}', 1, '', 0, 1, 1)"
+        ))
+    sync.migrate(eng)
+    sync.migrate(eng)  # ikkinchi marta — hech narsa qilmaydi
+    with eng.connect() as conn:
+        assert conn.execute(text("SELECT ts, ref FROM sync_records")).one() == (5, "s1")

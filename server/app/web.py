@@ -12,6 +12,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import html
 import json
 import time
 from collections import defaultdict
@@ -19,15 +20,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Response
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from . import netinfo, sync
 from .config import settings
 from .db import get_session
-from .models import Device, SyncRecord
+from .models import SyncRecord
 
 # Ilovadagi kDefaultBranchId bilan bir xil (filialdan oldingi yozuvlar).
 DEFAULT_BRANCH_ID = "00000000-0000-4000-8000-200000000001"
@@ -74,11 +76,25 @@ def read_token(token: str | None) -> str | None:
     return user_id if int(exp) > time.time() else None
 
 
-def _records(session: Session, entity: str) -> list[dict]:
+def _records(session: Session, entity: str, *where: Any) -> list[dict]:
     rows = session.execute(
-        select(SyncRecord.data).where(SyncRecord.entity == entity, SyncRecord.deleted.is_(False))
+        select(SyncRecord.data).where(SyncRecord.entity == entity, SyncRecord.deleted.is_(False), *where)
     ).scalars()
     return [d for d in rows if not d.get("is_deleted")]
+
+
+def _in_period(start: int, end: int) -> tuple:
+    """Indekslangan vaqt filtri (millionlab yozuvda butun jadval o'qilmaydi)."""
+    return SyncRecord.ts >= start, SyncRecord.ts < end
+
+
+def _by_ref(session: Session, entity: str, refs: set[str]) -> list[dict]:
+    """Bog'liq yozuvlar (masalan cheklarning qatorlari) indeks orqali, bo'laklab."""
+    ids = list(refs)
+    out: list[dict] = []
+    for i in range(0, len(ids), 500):
+        out += _records(session, entity, SyncRecord.ref.in_(ids[i : i + 500]))
+    return out
 
 
 def _branch_roles(user: dict) -> dict[str, str]:
@@ -228,7 +244,7 @@ def overview(user: UserDep, session: SessionDep, date_from: DateFrom = None, dat
     pay = {"cash": 0, "card": 0, "transfer": 0, "debt": 0}
     total = count = profit = discount = refunds = refund_sum = 0
     sale_ids: set[str] = set()
-    for s in _records(session, "sales"):
+    for s in _records(session, "sales", *_in_period(start, end)):
         created = int(_num(s.get("created_at")))
         if not (start <= created < end) or not _in(s, branches):
             continue
@@ -259,9 +275,7 @@ def overview(user: UserDep, session: SessionDep, date_from: DateFrom = None, dat
         pay["debt"] += int(_num(s.get("debt_amount")))
 
     products: dict[str, dict[str, Any]] = {}
-    for it in _records(session, "sale_items"):
-        if it.get("sale_id") not in sale_ids:
-            continue
+    for it in _by_ref(session, "sale_items", sale_ids):
         key = it.get("product_id") or it.get("product_name") or ""
         row = products.setdefault(key, {"name": it.get("product_name") or "", "unit": it.get("unit") or "", "qty": 0.0, "total": 0})
         row["qty"] += _num(it.get("qty"))
@@ -290,14 +304,14 @@ def sales(user: UserDep, session: SessionDep, date_from: DateFrom = None, date_t
     start, end = _range(date_from, date_to)
     branches = _branches_filter(user, branch_id)
     rows = [
-        s for s in _records(session, "sales")
+        s for s in _records(session, "sales", *_in_period(start, end))
         if start <= int(_num(s.get("created_at"))) < end and _in(s, branches)
     ]
     rows.sort(key=lambda s: -int(_num(s.get("created_at"))))
     rows = rows[:limit]
     ids = {s["id"] for s in rows}
     items: dict[str, list[dict]] = defaultdict(list)
-    for it in _records(session, "sale_items"):
+    for it in _by_ref(session, "sale_items", ids):
         if it.get("sale_id") in ids:
             items[it["sale_id"]].append({
                 "name": it.get("product_name") or "",
@@ -332,9 +346,17 @@ def stock(user: UserDep, session: SessionDep, branch_id: BranchQ = None) -> dict
     """Qoldiq ombor harakatlari yig'indisidan (ilovadagi kabi), filial bo'yicha."""
     branches = _branches_filter(user, branch_id)
     qty: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
-    for m in _records(session, "stock_movements"):
-        if _in(m, branches):
-            qty[m.get("product_id") or ""][m.get("branch_id") or DEFAULT_BRANCH_ID] += _num(m.get("qty"))
+    # Yig'indi bazaning o'zida: millionlab harakat Python'ga o'qilmaydi.
+    branch_col = SyncRecord.data["branch_id"].as_string()
+    rows = session.execute(
+        select(SyncRecord.ref, branch_col, func.sum(SyncRecord.data["qty"].as_float()))
+        .where(SyncRecord.entity == "stock_movements", SyncRecord.deleted.is_(False))
+        .group_by(SyncRecord.ref, branch_col)
+    ).all()
+    for product_id, b, q in rows:
+        b = b or DEFAULT_BRANCH_ID
+        if branches is None or b in branches:
+            qty[product_id or ""][b] += q or 0
     categories = {c["id"]: c.get("name") or "" for c in _records(session, "categories")}
     out = []
     for p in _records(session, "products"):
@@ -414,15 +436,12 @@ def activity(user: UserDep, session: SessionDep, date_from: DateFrom = None, dat
             # Bo'sh filial — umumiy yozuv (xodim, filial sozlamalari).
             "branch_id": a.get("branch_id") or "",
         }
-        for a in _records(session, "audit_log")
+        for a in _records(session, "audit_log", *_in_period(start, end))
         if start <= int(_num(a.get("created_at"))) < end
         and (branches is None or (a.get("branch_id") or "") in branches or (user.branches is None and not a.get("branch_id")))
     ]
     log.sort(key=lambda r: -r["created_at"])
-    devices = [
-        {"id": d.id, "last_push_at": d.last_push_at, "last_pull_at": d.last_pull_at, "pushed_count": d.pushed_count}
-        for d in session.execute(select(Device)).scalars()
-    ]
+    devices = sync.devices(session)
     devices.sort(key=lambda d: -max(d["last_push_at"] or 0, d["last_pull_at"] or 0))
     return {"log": log[:1000], "devices": devices if user.branches is None else []}
 
@@ -430,6 +449,48 @@ def activity(user: UserDep, session: SessionDep, date_from: DateFrom = None, dat
 # ---------------------------------------------------------------------------
 #  Sahifa
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+#  Qurilma ulash: QR kod (server manzillari + API kalit)
+# ---------------------------------------------------------------------------
+
+_LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
+
+
+def connect_payload(port: int) -> str:
+    """Telefon skanerlaydigan matn: {"pos":1,"urls":[...],"key":"..."}."""
+    urls = [f"http://{ip}:{port}" for ip in netinfo.local_ips()]
+    return json.dumps({"pos": 1, "urls": urls, "key": settings.api_key}, separators=(",", ":"))
+
+
+def _qr_svg(text: str) -> str:
+    import qrcode
+    import qrcode.image.svg
+
+    img = qrcode.make(text, image_factory=qrcode.image.svg.SvgPathImage, box_size=12, border=2)
+    return img.to_string(encoding="unicode")
+
+
+@router.get("/ulash", include_in_schema=False)
+def connect_page(request: Request, session: SessionDep, pos_web: Annotated[str | None, Cookie()] = None) -> Response:
+    """QR kodli sahifa. API kalitni ko'rsatgani uchun faqat server kompyuterining
+    o'zida (localhost) yoki panelga kirgan bosh admin uchun ochiladi."""
+    local = request.client is not None and request.client.host in _LOCAL_HOSTS
+    if not local:
+        try:
+            user = current_user(session, pos_web)
+        except HTTPException:
+            return RedirectResponse("/panel")
+        if user.branches is not None:
+            raise HTTPException(status_code=403, detail="Faqat bosh admin uchun")
+    payload = connect_payload(request.url.port or 8000)
+    urls = json.loads(payload)["urls"]
+    page = (PAGE.parent / "ulash.html").read_text(encoding="utf-8")
+    page = page.replace("{{QR}}", _qr_svg(payload)).replace("{{URL}}", html.escape(urls[0]))
+    page = page.replace("{{URLS}}", "<br>".join(html.escape(u) for u in urls[1:]) or "—")
+    page = page.replace("{{KEY}}", html.escape(settings.api_key))
+    return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/", include_in_schema=False)

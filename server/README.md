@@ -21,6 +21,13 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 `POS_DATABASE_URL` berilmasa SQLite (`pos.db`) ishlatiladi.
 
+## Qurilmani ulash (QR)
+
+PosServer.exe qo'lda ochilganda brauzerda `http://localhost:8000/ulash` sahifasi
+ochiladi: unda QR kod (server manzillari + API kalit). Telefonda
+Sozlamalar > Sinxronlash > "QR orqali ulash" ni bosib skanerlang. Sahifa faqat
+server kompyuterining o'zida yoki panelga kirgan bosh admin uchun ochiladi.
+
 ## Web hisobot paneli
 
 Server ishlayotganda brauzerda `http://<server-IP>:8000/` oching (telefon yoki

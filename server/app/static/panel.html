@@ -25,8 +25,8 @@
   nav button.on { color: var(--accent); border-color: var(--accent); font-weight: 600; }
   main { max-width: 1200px; margin: 0 auto; padding: 16px; }
   .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
-  input, select, button.btn { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
-  button.btn { cursor: pointer; }
+  input, select, button.btn, a.btn { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+  button.btn, a.btn { cursor: pointer; text-decoration: none; }
   button.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
   button.chip { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 16px; padding: 5px 12px; cursor: pointer; }
   button.chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
@@ -84,6 +84,7 @@
     <div class="bar">
       <div class="brand">POS hisobot</div>
       <select id="branch"></select>
+      <a class="btn hidden" id="connectLink" href="/ulash" target="_blank" title="Telefon yoki kompyuterni QR kod bilan ulash">Qurilma ulash</a>
       <span class="muted" id="who"></span>
       <button class="btn" id="logout">Chiqish</button>
     </div>
@@ -337,6 +338,7 @@ async function start() {
     const me = await api('/api/web/me');
     state.branches = me.branches;
     $('#who').textContent = me.name;
+    $('#connectLink').classList.toggle('hidden', !me.owner);
     $('#branch').innerHTML = (state.branches.length > 1 ? '<option value="">Barcha filiallar</option>' : '') +
       state.branches.map((b) => `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('');
     $('#branch').classList.toggle('hidden', state.branches.length < 2);

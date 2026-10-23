@@ -49,6 +49,21 @@ class _AlertsPageState extends ConsumerState<AlertsPage> {
             icon: const Icon(Icons.done_all),
             label: const Text("Hammasini o'qilgan qilish"),
           ),
+          OutlinedButton.icon(
+            onPressed: list.isEmpty
+                ? null
+                : () async {
+                    final what = _type == null ? 'barcha alertlar' : '"${_type!.label}" alertlari';
+                    if (await confirmDialog(context, "Alertlarni o'chirish", "Ro'yxatdagi $what o'chirilsinmi?")) {
+                      final repo = ref.read(alertRepoProvider);
+                      for (final a in list) {
+                        await repo.delete(a.id);
+                      }
+                    }
+                  },
+            icon: const Icon(Icons.delete_sweep_outlined),
+            label: const Text("O'chirish"),
+          ),
         ]),
       ),
       Expanded(
@@ -60,7 +75,11 @@ class _AlertsPageState extends ConsumerState<AlertsPage> {
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, i) {
                   final a = list[i];
-                  return Card(
+                  // Chapga/o'ngga surib bitta alertni o'chirish.
+                  return Dismissible(
+                    key: ValueKey(a.id),
+                    onDismissed: (_) => ref.read(alertRepoProvider).delete(a.id),
+                    child: Card(
                     child: ListTile(
                       leading: CircleAvatar(
                         backgroundColor: alertColor(context, a.severity).withValues(alpha: 0.15),
@@ -78,6 +97,7 @@ class _AlertsPageState extends ConsumerState<AlertsPage> {
                               icon: const Icon(Icons.mark_email_read_outlined),
                               onPressed: () => ref.read(alertRepoProvider).markRead(a.id),
                             ),
+                    ),
                     ),
                   );
                 },

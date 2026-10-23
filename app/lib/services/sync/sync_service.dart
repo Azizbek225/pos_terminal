@@ -278,16 +278,35 @@ class SyncService {
   //  PUSH
   // --------------------------------------------------------------------------
 
+  /// Bitta so'rovdagi yozuvlar. Katta paket — kam so'rov; server 5000 gacha qabul qiladi.
+  static const _pushBatch = 500;
+  static const _pullBatch = 1000;
+
+  /// Uzoq sinxronlashda holat qatorida jarayonni ko'rsatish.
+  void _progress(String message) => status.value = status.value.copyWith(message: message);
+
   Future<int> _push(_Api api, String deviceId) async {
     var total = 0;
+    final pending = await pendingCount();
     // Tartib muhim: avval chek, keyin uning qatorlari (FOREIGN KEY).
     for (final entity in SyncEntities.all) {
       final table = _table(entity);
+      final name = table.actualTableName;
+      // Keyset sahifalash: server qabul qilmagan (rejected) yozuvlar keyingi
+      // sahifada qayta-qayta tanlanib, cheksiz aylanib qolmaydi.
+      var lastUpdated = -1;
+      var lastId = '';
       while (true) {
         final rows = await db
-            .customSelect('SELECT * FROM ${table.actualTableName} WHERE dirty = 1 ORDER BY updated_at LIMIT 300')
+            .customSelect(
+              'SELECT * FROM $name WHERE dirty = 1 AND (updated_at > ?1 OR (updated_at = ?1 AND id > ?2)) '
+              'ORDER BY updated_at, id LIMIT $_pushBatch',
+              variables: [Variable.withInt(lastUpdated), Variable.withString(lastId)],
+            )
             .get();
         if (rows.isEmpty) break;
+        lastUpdated = rows.last.read<int>('updated_at');
+        lastId = rows.last.read<String>('id');
         final changes = rows.map((r) {
           final data = Map<String, Object?>.from(r.data)..removeWhere((k, _) => _localOnlyColumns.contains(k));
           return {
@@ -301,29 +320,35 @@ class SyncService {
         final resp = await api.post('/api/sync/push', {'device_id': deviceId, 'changes': changes});
 
         final sentUpdated = {for (final c in changes) c['id'] as String: c['updated_at'] as int};
-        for (final a in (resp['accepted'] as List? ?? const [])) {
-          final id = (a as Map)['id'] as String;
-          await db.customUpdate(
-            'UPDATE ${table.actualTableName} SET dirty = 0 WHERE id = ? AND updated_at = ?',
-            variables: [Variable.withString(id), Variable.withInt(sentUpdated[id] ?? 0)],
-            updates: {table},
-          );
-        }
-        for (final c in (resp['conflicts'] as List? ?? const [])) {
-          final m = c as Map<String, dynamic>;
-          final serverData = Map<String, Object?>.from(m['data'] as Map);
-          await _applyRow(entity, serverData, force: true);
-          if (!_immutable.contains(entity) && !_resync) {
-            await alerts.system(
-              'Sinxronlash konflikti',
-              '$entity yozuvi boshqa qurilmada yangiroq o\'zgartirilgan — server versiyasi qabul qilindi.',
-              type: AlertType.sync,
-              dedupeKey: 'conflict:$entity:${m['id']}',
+        final touched = <TableInfo>{};
+        // Bitta tranzaksiya: yuzlab yozuvni belgilash har biri alohida diskka
+        // yozilgandan o'nlab barobar tez.
+        await db.transaction(() async {
+          for (final a in (resp['accepted'] as List? ?? const [])) {
+            final id = (a as Map)['id'] as String;
+            await db.customUpdate(
+              'UPDATE $name SET dirty = 0 WHERE id = ? AND updated_at = ?',
+              variables: [Variable.withString(id), Variable.withInt(sentUpdated[id] ?? 0)],
             );
           }
-        }
+          for (final c in (resp['conflicts'] as List? ?? const [])) {
+            final m = c as Map<String, dynamic>;
+            final serverData = Map<String, Object?>.from(m['data'] as Map);
+            await _applyRow(entity, serverData, force: true, touched: touched);
+            if (!_immutable.contains(entity) && !_resync) {
+              await alerts.system(
+                'Sinxronlash konflikti',
+                '$entity yozuvi boshqa qurilmada yangiroq o\'zgartirilgan — server versiyasi qabul qilindi.',
+                type: AlertType.sync,
+                dedupeKey: 'conflict:$entity:${m['id']}',
+              );
+            }
+          }
+        });
+        db.notifyUpdates({for (final t in {table, ...touched}) TableUpdate.onTable(t)});
         total += changes.length;
-        if (rows.length < 300) break;
+        _progress('Yuborilmoqda: $total / $pending');
+        if (rows.length < _pushBatch) break;
       }
     }
     return total;
@@ -337,10 +362,11 @@ class SyncService {
     var cursor = await settings.getInt(SettingKeys.syncCursor, 0);
     var total = 0;
     final touchedProducts = <String>{};
-    var salesChanged = false;
+    final soldProducts = <String>{};
+    final changedSales = <String>{};
 
     while (true) {
-      final resp = await api.get('/api/sync/pull', {'since': '$cursor', 'limit': '500'});
+      final resp = await api.get('/api/sync/pull', {'since': '$cursor', 'limit': '$_pullBatch'});
       final maxSeq = (resp['max_seq'] as num?)?.toInt();
       if (maxSeq != null && cursor > maxSeq) {
         // Server bazasi yangidan boshlangan: eski kursor bilan yangi yozuvlar
@@ -356,6 +382,8 @@ class SyncService {
         final eb = SyncEntities.all.indexOf(b['entity'] as String);
         return ea != eb ? ea.compareTo(eb) : (a['seq'] as int).compareTo(b['seq'] as int);
       });
+      // Ekranlar har yozuvda emas, sahifa oxirida bir marta yangilanadi.
+      final touched = <TableInfo>{};
       await db.transaction(() async {
         for (final c in changes) {
           final entity = c['entity'] as String;
@@ -363,7 +391,7 @@ class SyncService {
           final data = Map<String, Object?>.from(c['data'] as Map);
           bool applied;
           try {
-            applied = await _applyRow(entity, data);
+            applied = await _applyRow(entity, data, touched: touched);
           } catch (e) {
             // Bitta buzilgan yozuv butun sinxronlashni to'xtatib qo'ymasligi kerak.
             debugPrint('Sync: $entity/${data['id']} qo\'llanmadi: $e');
@@ -380,12 +408,17 @@ class SyncService {
           if (entity == SyncEntities.stockMovements || entity == SyncEntities.products) {
             touchedProducts.add((data['product_id'] ?? data['id']) as String);
           }
-          if (entity == SyncEntities.sales || entity == SyncEntities.saleItems) salesChanged = true;
+          if (entity == SyncEntities.saleItems && data['product_id'] is String) {
+            soldProducts.add(data['product_id'] as String);
+          }
+          if (entity == SyncEntities.sales) changedSales.add(data['id'] as String);
         }
       });
+      if (touched.isNotEmpty) db.notifyUpdates({for (final t in touched) TableUpdate.onTable(t)});
       total += changes.length;
       cursor = (resp['cursor'] as num?)?.toInt() ?? cursor;
       await settings.set(SettingKeys.syncCursor, '$cursor');
+      _progress('Olinmoqda: $total');
       if (resp['has_more'] != true) break;
     }
 
@@ -393,7 +426,22 @@ class SyncService {
       await stock.recompute(touchedProducts);
       await alerts.checkStock(touchedProducts);
     }
-    if (salesChanged) await stats.rebuildSeasonal();
+    if (soldProducts.isNotEmpty || changedSales.isNotEmpty) {
+      // Mavsumiy statistika faqat o'zgargan tovarlar bo'yicha qayta hisoblanadi
+      // (har sinxronlashda millionlab chek qatorini qayta yig'masligi uchun).
+      final ids = changedSales.toList();
+      for (var i = 0; i < ids.length; i += 500) {
+        final chunk = ids.sublist(i, i + 500 > ids.length ? ids.length : i + 500);
+        final rows = await db
+            .customSelect(
+              'SELECT DISTINCT product_id FROM sale_items WHERE sale_id IN (${List.filled(chunk.length, '?').join(',')})',
+              variables: chunk.map(Variable.withString).toList(),
+            )
+            .get();
+        soldProducts.addAll(rows.map((r) => r.read<String>('product_id')));
+      }
+      await stats.rebuildSeasonal(productIds: soldProducts);
+    }
     return total;
   }
 
@@ -451,7 +499,7 @@ class SyncService {
   }
 
   /// Bitta yozuvni lokal bazaga qo'llash. Qaytaradi: o'zgarish kiritildimi.
-  Future<bool> _applyRow(String entity, Map<String, Object?> data, {bool force = false}) async {
+  Future<bool> _applyRow(String entity, Map<String, Object?> data, {bool force = false, Set<TableInfo>? touched}) async {
     final table = _table(entity);
     final name = table.actualTableName;
     final id = data['id'] as String?;
@@ -496,7 +544,11 @@ class SyncService {
       'INSERT INTO $name (${cols.join(', ')}) VALUES ($placeholders) ON CONFLICT(id) DO UPDATE SET $updates',
       cols.map((c) => values[c]).toList(),
     );
-    db.notifyUpdates({TableUpdate.onTable(table)});
+    if (touched != null) {
+      touched.add(table);
+    } else {
+      db.notifyUpdates({TableUpdate.onTable(table)});
+    }
     return true;
   }
 
@@ -535,12 +587,59 @@ class SyncService {
   /// Serverni to'liq qayta yuklab olish (masalan yangi qurilma ulanganda).
   Future<void> resetCursor() => settings.set(SettingKeys.syncCursor, '0');
 
-  /// Serverga ulanishni tekshirish.
+  /// PosServer'ning "/ulash" sahifasidagi QR kod: {"pos":1,"urls":[...],"key":"..."}.
+  /// Noto'g'ri kod bo'lsa — null.
+  static ({List<String> urls, String key})? parseConnectQr(String raw) {
+    try {
+      final m = jsonDecode(raw.trim());
+      if (m is! Map || m['pos'] != 1) return null;
+      final urls = (m['urls'] as List? ?? const []).whereType<String>().where((u) => u.startsWith('http')).toList();
+      final key = m['key'];
+      if (urls.isEmpty || key is! String || key.isEmpty) return null;
+      return (urls: urls, key: key);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  /// Bir nechta manzildan (Wi-Fi, Tailscale) shu qurilmadan ochiladiganini
+  /// topish. Hammasi bir vaqtda tekshiriladi; ro'yxat tartibida birinchisi qaytadi.
+  Future<String?> firstReachable(List<String> urls) async {
+    final deviceId = await settings.deviceId();
+    final ok = await Future.wait(urls.map((u) async {
+      try {
+        await _Api(u, '', deviceId, timeout: const Duration(seconds: 5)).get('/api/health', const {});
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }));
+    for (var i = 0; i < urls.length; i++) {
+      if (ok[i]) return urls[i];
+    }
+    return null;
+  }
+
+  /// Serverga ulanishni tekshirish (tez: sinxronlashni kutmaydi).
   Future<String> testConnection() async {
     final baseUrl = ((await settings.get(SettingKeys.syncUrl)) ?? '').trim();
+    if (baseUrl.isEmpty) throw SyncException('Server manzilini yozing (masalan http://192.168.1.10:8000)');
+    if (!baseUrl.startsWith('http://') && !baseUrl.startsWith('https://')) {
+      throw SyncException("Manzil http:// bilan boshlanishi kerak: http://$baseUrl");
+    }
     final apiKey = (await settings.get(SettingKeys.syncApiKey)) ?? '';
-    final api = _Api(baseUrl, apiKey, await settings.deviceId());
-    final r = await api.get('/api/health', const {});
+    final api = _Api(baseUrl, apiKey, await settings.deviceId(), timeout: const Duration(seconds: 10));
+    final Map<String, dynamic> r;
+    try {
+      r = await api.get('/api/health', const {});
+    } on SyncException catch (e) {
+      if (!e.offline) rethrow;
+      throw SyncException(
+        "Server javob bermadi: $baseUrl\n"
+        "PosServer oynasi ochiqligini, IP to'g'riligini va telefon shu Wi-Fi yoki Tailscale'da ekanini tekshiring.",
+        offline: true,
+      );
+    }
     // /api/health kalitsiz ochiq — kalitni tekshirish uchun bo'sh pull so'rovi yuboramiz.
     await api.get('/api/sync/pull', const {'since': '999999999999', 'limit': '1'});
     return "Ulandi: server ishlayapti (v${r['version'] ?? ''}), API kalit to'g'ri";

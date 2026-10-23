@@ -318,16 +318,28 @@ class StatsRepository {
 
   /// Statistikani joriy filialning barcha sotuvlaridan to'liq qayta qurish
   /// (sinxronlashdan yoki filial almashgandan keyin).
-  Future<void> rebuildSeasonal() async {
-    await db.transaction(() async {
-      await db.customStatement('DELETE FROM seasonal_stats');
-      await db.customStatement(
-        'INSERT INTO seasonal_stats (product_id, season, year, qty, revenue, sale_count) '
+  /// Mavsumiy statistikani cheklardan qayta hisoblash. [productIds] berilsa —
+  /// faqat shu tovarlar (sinxronlashdan keyin; katta bazada butun jadvalni
+  /// qayta yig'masligi uchun).
+  Future<void> rebuildSeasonal({Iterable<String>? productIds}) async {
+    const insert = 'INSERT INTO seasonal_stats (product_id, season, year, qty, revenue, sale_count) '
         'SELECT si.product_id, $_seasonExpr, $_seasonYearExpr, SUM(si.qty), SUM(si.line_total), '
         'COUNT(DISTINCT si.sale_id) FROM sale_items si JOIN sales s ON s.id = si.sale_id '
-        'WHERE $_completed GROUP BY si.product_id, $_seasonExpr, $_seasonYearExpr',
-        [branch.id],
-      );
+        'WHERE $_completed';
+    const group = ' GROUP BY si.product_id, $_seasonExpr, $_seasonYearExpr';
+    await db.transaction(() async {
+      if (productIds == null) {
+        await db.customStatement('DELETE FROM seasonal_stats');
+        await db.customStatement('$insert$group', [branch.id]);
+        return;
+      }
+      final ids = productIds.toList();
+      for (var i = 0; i < ids.length; i += 500) {
+        final chunk = ids.sublist(i, i + 500 > ids.length ? ids.length : i + 500);
+        final ph = List.filled(chunk.length, '?').join(',');
+        await db.customStatement('DELETE FROM seasonal_stats WHERE product_id IN ($ph)', chunk);
+        await db.customStatement('$insert AND si.product_id IN ($ph)$group', [branch.id, ...chunk]);
+      }
     });
     db.notifyUpdates({TableUpdate.onTable(db.seasonalStats)});
   }

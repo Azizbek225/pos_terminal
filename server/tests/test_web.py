@@ -121,3 +121,21 @@ def test_branch_admin_sees_only_own_branch(client):
     assert client.get("/api/web/debts").json()["supplier_debt"] == 0
     a = client.get("/api/web/activity", params={"date_from": "2026-10-20"}).json()
     assert a["log"] == [] and a["devices"] == []
+
+
+def test_connect_page_needs_owner(client):
+    seed(client)
+    # TestClient manzili "testclient" — localhost emas: kirish talab qilinadi.
+    assert client.get("/ulash", follow_redirects=False).headers["location"] == "/panel"
+    login(client, "filial")
+    assert client.get("/ulash").status_code == 403
+    client.cookies.clear()
+    login(client)
+    page = client.get("/ulash").text
+    assert "<svg" in page and "test-key" in page
+
+
+def test_connect_payload():
+    data = json.loads(web.connect_payload(8000))
+    assert data["pos"] == 1 and data["key"] == "test-key"
+    assert all(u.startswith("http://") and u.endswith(":8000") for u in data["urls"])

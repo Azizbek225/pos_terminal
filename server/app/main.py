@@ -22,13 +22,16 @@ from sqlalchemy.orm import Session
 
 from . import __version__, printers, sync, web
 from .config import settings
-from .db import Base, engine, get_session
-from .models import Device, SyncRecord
+from .db import Base, SessionLocal, engine, get_session
+from .models import SyncRecord
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # Jadvallar birinchi ishga tushishda avtomatik yaratiladi.
     Base.metadata.create_all(engine)
+    sync.migrate(engine)
+    with SessionLocal() as session:
+        sync.init(session)
     yield
 
 
@@ -99,16 +102,7 @@ def pull(
 
 @app.get("/api/devices", dependencies=[Depends(require_key)])
 def devices(session: SessionDep) -> list[dict]:
-    rows = session.execute(select(Device)).scalars().all()
-    return [
-        {
-            "id": d.id,
-            "last_push_at": d.last_push_at,
-            "last_pull_at": d.last_pull_at,
-            "pushed_count": d.pushed_count,
-        }
-        for d in rows
-    ]
+    return sync.devices(session)
 
 
 # ---------------------------------------------------------------------------

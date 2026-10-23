@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import case, inspect, select, text, update
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from .models import Device, ServerInfo, SyncCounter, SyncRecord
@@ -33,6 +35,50 @@ ENTITIES = (
 # Qoldiq shu harakatlar yig'indisidan hisoblanadi, shuning uchun parallel
 # sotuvlar bir-birini "bosib" ketmaydi.
 IMMUTABLE = {"sale_items", "stock_movements", "audit_log", "supplier_purchase_items"}
+
+# Hisobot indekslari uchun bog'liq yozuv maydoni (SyncRecord.ref).
+REF_FIELD = {
+    "sale_items": "sale_id",
+    "stock_movements": "product_id",
+    "supplier_purchases": "supplier_id",
+    "supplier_purchase_items": "purchase_id",
+    "supplier_payments": "supplier_id",
+    "customer_debts": "customer_id",
+}
+
+
+def index_fields(entity: str, data: dict) -> tuple[int | None, str | None]:
+    """(ts, ref): JSON ichidagi yaratilgan vaqt va bog'liq yozuv ID si."""
+    try:
+        ts = int(data.get("created_at")) if data.get("created_at") is not None else None
+    except (TypeError, ValueError):
+        ts = None
+    field = REF_FIELD.get(entity)
+    ref = str(data.get(field))[:64] if field and data.get(field) is not None else None
+    return ts, ref
+
+
+def migrate(engine: Engine) -> None:
+    """Eski bazaga ts/ref ustunlari va indekslarini qo'shish (bir marta)."""
+    from .models import SyncRecord
+
+    cols = {c["name"] for c in inspect(engine).get_columns("sync_records")}
+    if "ts" not in cols:
+        # Ustun qo'shish va mavjud yozuvlarni to'ldirish bitta tranzaksiyada (yarim
+        # yo'lda to'xtasa, keyingi ishga tushishda boshidan qilinadi). Bitta SQL:
+        # SQLite va PostgreSQL'da ishlaydi.
+        print("  Baza hisobotlar uchun yangilanmoqda (bir marta)...", flush=True)
+        ref = case(
+            *[(SyncRecord.entity == e, SyncRecord.data[f].as_string()) for e, f in REF_FIELD.items()],
+            else_=None,
+        )
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE sync_records ADD COLUMN ts BIGINT"))
+            conn.execute(text("ALTER TABLE sync_records ADD COLUMN ref VARCHAR(64)"))
+            conn.execute(update(SyncRecord).values(ts=SyncRecord.data["created_at"].as_integer(), ref=ref))
+    # Indekslar to'ldirishdan keyin (aks holda har qatorda indeks yangilanadi).
+    for idx in SyncRecord.__table__.indexes:
+        idx.create(engine, checkfirst=True)
 
 
 def server_id(session: Session) -> str:
@@ -87,10 +133,46 @@ def incoming_wins(entity: str, data: dict, updated_at: int, device_id: str, exis
     return device_id > (existing.device_id or "")
 
 
+def _preload(session: Session, changes: list[dict]) -> None:
+    """Mavjud yozuvlarni bir nechta so'rovda yuklab olish (har biriga alohida
+    SELECT o'rniga): keyingi session.get() lar bazaga bormaydi."""
+    by_entity: dict[str, list[str]] = {}
+    for ch in changes:
+        rid = ch.get("id") or (ch.get("data") or {}).get("id")
+        if ch.get("entity") in ENTITIES and rid:
+            by_entity.setdefault(ch["entity"], []).append(str(rid))
+    for entity, ids in by_entity.items():
+        for i in range(0, len(ids), 500):
+            session.execute(
+                select(SyncRecord).where(SyncRecord.entity == entity, SyncRecord.id.in_(ids[i : i + 500]))
+            ).scalars().all()
+
+
+# Bir vaqtda kelgan push'lar navbat bilan yoziladi. SQLite'da `FOR UPDATE` yo'q:
+# qulfsiz ikki qurilma bir xil seq olib, biri "database is locked" / 500 xato
+# olardi. PosServer bitta jarayon, shuning uchun oddiy qulf yetarli.
+_PUSH_LOCK = threading.Lock()
+
+
+def init(session: Session) -> None:
+    """Bitta qatorli jadvallarni ishga tushishda yaratish (birinchi so'rovlar
+    bir vaqtda kelganda ikkalasi ham yaratmoqchi bo'lib xato bermasin)."""
+    server_id(session)
+    if session.get(SyncCounter, 1) is None:
+        session.add(SyncCounter(id=1, value=0))
+        session.commit()
+
+
 def push(session: Session, device_id: str, changes: list[dict]) -> PushResult:
+    with _PUSH_LOCK:
+        return _push(session, device_id, changes)
+
+
+def _push(session: Session, device_id: str, changes: list[dict]) -> PushResult:
     result = PushResult()
     counter = _next_counter(session)
     received = now_ms()
+    _preload(session, changes)
 
     for ch in changes:
         entity = ch.get("entity")
@@ -102,6 +184,7 @@ def push(session: Session, device_id: str, changes: list[dict]) -> PushResult:
         updated_at = int(data.get("updated_at") or ch.get("updated_at") or 0)
         dev = str(data.get("device_id") or ch.get("device_id") or device_id)
         deleted = bool(data.get("is_deleted") or False)
+        ts, ref = index_fields(entity, data)
 
         existing = session.get(SyncRecord, (entity, rid))
         if existing is None:
@@ -116,6 +199,8 @@ def push(session: Session, device_id: str, changes: list[dict]) -> PushResult:
                     deleted=deleted,
                     seq=counter.value,
                     received_at=received,
+                    ts=ts,
+                    ref=ref,
                 )
             )
             result.accepted.append({"entity": entity, "id": rid})
@@ -134,6 +219,8 @@ def push(session: Session, device_id: str, changes: list[dict]) -> PushResult:
             existing.deleted = deleted
             existing.seq = counter.value
             existing.received_at = received
+            existing.ts = ts
+            existing.ref = ref
             result.accepted.append({"entity": entity, "id": rid})
         elif existing.updated_at == updated_at and existing.device_id == dev:
             # Aynan shu versiya allaqachon serverda.
@@ -143,10 +230,31 @@ def push(session: Session, device_id: str, changes: list[dict]) -> PushResult:
 
     dev_row = session.get(Device, device_id) or Device(id=device_id, pushed_count=0)
     dev_row.last_push_at = received
+    dev_row.last_pull_at = max(dev_row.last_pull_at or 0, LAST_PULL.get(device_id, 0)) or None
     dev_row.pushed_count = (dev_row.pushed_count or 0) + len(result.accepted)
     session.add(dev_row)
     session.commit()
     return result
+
+
+# Qurilmalarning oxirgi pull vaqti xotirada: pull bazaga umuman yozmaydi, shuning
+# uchun boshqa qurilma katta paket yozayotganda (SQLite qulfi) kutib qolmaydi.
+# Bazaga keyingi push bilan birga tushadi.
+LAST_PULL: dict[str, int] = {}
+
+
+def devices(session: Session) -> list[dict]:
+    rows = {d.id: d for d in session.execute(select(Device)).scalars()}
+    out = []
+    for dev_id in rows.keys() | LAST_PULL.keys():
+        d = rows.get(dev_id)
+        out.append({
+            "id": dev_id,
+            "last_push_at": d.last_push_at if d else None,
+            "last_pull_at": max((d.last_pull_at or 0) if d else 0, LAST_PULL.get(dev_id, 0)) or None,
+            "pushed_count": (d.pushed_count or 0) if d else 0,
+        })
+    return out
 
 
 def pull(session: Session, device_id: str, since: int, limit: int) -> dict:
@@ -160,10 +268,7 @@ def pull(session: Session, device_id: str, since: int, limit: int) -> dict:
     has_more = len(rows) > limit
     rows = rows[:limit]
     counter = session.get(SyncCounter, 1)
-    dev_row = session.get(Device, device_id) or Device(id=device_id, pushed_count=0)
-    dev_row.last_pull_at = now_ms()
-    session.add(dev_row)
-    session.commit()
+    LAST_PULL[device_id] = now_ms()
     return {
         "changes": [{"entity": r.entity, "id": r.id, "seq": r.seq, "data": r.data} for r in rows],
         "cursor": rows[-1].seq if rows else since,

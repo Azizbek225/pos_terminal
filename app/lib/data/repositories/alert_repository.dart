@@ -73,6 +73,15 @@ class AlertRepository {
   Future<void> markAllRead() =>
       (db.update(db.alerts)..where((a) => a.isRead.equals(false))).write(const AlertsCompanion(isRead: Value(true)));
 
+  /// Alertlarni o'chirish: [types] berilsa — faqat shu turlar, aks holda hammasi.
+  Future<int> deleteAll({Iterable<String>? types}) {
+    final q = db.delete(db.alerts);
+    if (types != null) q.where((a) => a.type.isIn(types));
+    return q.go();
+  }
+
+  Future<void> delete(String id) => (db.delete(db.alerts)..where((a) => a.id.equals(id))).go();
+
   /// Kam qoldiq muammosi hal bo'lganda tegishli alertlarni yopish.
   Future<void> resolveByKey(String dedupeKey) => (db.update(db.alerts)
         ..where((a) => a.dedupeKey.equals(dedupeKey) & a.isRead.equals(false)))
