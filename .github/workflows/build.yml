@@ -204,6 +204,8 @@ jobs:
         run: gh release upload sinov-build dist/pos-terminal-windows-x64.zip --clobber --repo "$GITHUB_REPOSITORY"
 
   macos:
+    # Faqat reliz tegida: macOS daqiqalari 10 barobar qimmat.
+    if: startsWith(github.ref, 'refs/tags/')
     needs: test
     runs-on: macos-latest
     steps:
@@ -228,6 +230,8 @@ jobs:
           retention-days: 7
 
   ios:
+    # Faqat reliz tegida: macOS daqiqalari 10 barobar qimmat.
+    if: startsWith(github.ref, 'refs/tags/')
     needs: test
     runs-on: macos-latest
     steps:
