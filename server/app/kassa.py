@@ -18,7 +18,7 @@ import uuid
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -128,8 +128,8 @@ def _need(user: KassaUser, branch_id: str, *roles: str, session: Session | None 
 
 
 @router.post("/api/kassa/login")
-def login(body: LoginBody, session: SessionDep, response: Response) -> dict:
-    uid, data = check_login(session, body.username, body.password)
+def login(body: LoginBody, session: SessionDep, request: Request, response: Response) -> dict:
+    uid, data = check_login(session, body.username, body.password, request)
     user = _user_of(data, uid)
     if user is None:
         raise HTTPException(status_code=403, detail="Xodim faol emas")

@@ -175,6 +175,14 @@ def open_connect_page(port: int = PORT) -> None:
     threading.Thread(target=go, name="pos-open-browser", daemon=True).start()
 
 
+def print_public_url(port: int = PORT) -> None:
+    from app import funnel
+
+    url = funnel.public_url(port)
+    if url:
+        print(f"  INTERNETDAN (istalgan joydan): {url}/", flush=True)
+
+
 def main() -> None:
     args = set(sys.argv[1:])
     if "--autostart-off" in args:
@@ -223,6 +231,7 @@ def main() -> None:
 
     if not minimized:
         open_connect_page()
+    threading.Thread(target=print_public_url, name="pos-funnel", daemon=True).start()
 
     import uvicorn
 

@@ -200,6 +200,19 @@ tozalasangiz, sinxronlanmagan yozuvlar yo'qolishi mumkin.
 Yengil variant ham bor: `http://<server IP>:8000/kassa` — faqat savdo, kirim va nasiya
 (eski kompyuter yoki sekin telefon uchun).
 
+### 6.0.2. Telefon boshqa joyda bo'lsa (internet orqali, bepul)
+
+1. PosServer kompyuteriga bepul **Tailscale** o'rnating (https://tailscale.com/download/windows) va Google bilan kiring — bir marta.
+2. Kompyuterda `http://localhost:8000/ulash` sahifasida **"Internetga ochish"** tugmasini bosing.
+   Birinchi marta Tailscale ruxsat sahifasi ochiladi — **Enable** ni bosing.
+3. Sahifada doimiy havola (`https://<kompyuter>.<nom>.ts.net/`) va QR kod chiqadi. Telefonda uni
+   istalgan joydan (mobil internet) oddiy brauzerda oching — telefonga hech narsa o'rnatilmaydi.
+
+Havola o'zgarmaydi, kompyuter qayta yonganda ham ishlayveradi (kompyuter yoniq bo'lishi kerak).
+Xavfsizlik: internetdan kirishda boshlang'ich `admin123` paroli ishlamaydi — ilovada admin parolini
+o'zgartiring; 10 ta xato urinishdan keyin manzil 10 daqiqaga bloklanadi. Yopish: o'sha sahifada
+"Internetdan yopish".
+
 ### 6.1. Docker bilan
 
 Docker o'rnating: Windows/macOS uchun **Docker Desktop**, Linux uchun `curl -fsSL https://get.docker.com | sh`.

@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import html
 import json
+import os
 import time
 from collections import defaultdict
 from datetime import datetime
@@ -26,7 +27,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from . import netinfo, sync
+from . import funnel, netinfo, sync
 from .config import settings
 from .db import get_session
 from .models import SyncRecord
@@ -148,8 +149,38 @@ class LoginBody(BaseModel):
     password: str
 
 
-def check_login(session: Session, username: str, password: str) -> tuple[str, dict | None]:
-    """(user_id, xodim yozuvi) — API kalit bilan kirilganda yozuv None."""
+LOGIN_TRIES = 10
+LOGIN_WINDOW = 600
+_failed: dict[str, list[float]] = defaultdict(list)
+
+
+def client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "?"
+
+
+def check_login(session: Session, username: str, password: str,
+                request: Request | None = None) -> tuple[str, dict | None]:
+    """(user_id, xodim yozuvi) — API kalit bilan kirilganda yozuv None.
+
+    Internetdan (Tailscale Funnel) kelganda: boshlang'ich admin123 ishlamaydi va
+    bir manzildan 10 daqiqada 10 tadan ortiq xato urinish bloklanadi."""
+    public = request is not None and funnel.is_forwarded(request)
+    ip = client_ip(request) if request is not None else ""
+    now = time.time()
+    tries = _failed[ip] = [t for t in _failed[ip] if now - t < LOGIN_WINDOW]
+    if len(tries) >= LOGIN_TRIES:
+        raise HTTPException(status_code=429, detail="Ko'p xato urinish. 10 daqiqadan keyin qayta urinib ko'ring")
+    try:
+        return _check_login(session, username, password, public)
+    except HTTPException:
+        tries.append(now)
+        raise
+
+
+def _check_login(session: Session, username: str, password: str, public: bool) -> tuple[str, dict | None]:
     uname = username.strip().lower()
     users = _records(session, "users")
     for u in users:
@@ -164,6 +195,10 @@ def check_login(session: Session, username: str, password: str) -> tuple[str, di
     # ilovada parol o'zgartirilib sinxronlangach, yangi parol talab qilinadi.
     has_admin = any(str(u.get("username") or "").lower() == DEFAULT_ADMIN[0] for u in users)
     if not has_admin and uname == DEFAULT_ADMIN[0] and hmac.compare_digest(password, DEFAULT_ADMIN[1]):
+        if public:
+            raise HTTPException(status_code=401, detail=(
+                "Internet orqali admin123 bilan kirib bo'lmaydi: ilovada admin parolini "
+                "o'zgartiring (yoki parol o'rniga API kalitni yozing)"))
         return KEY_USER, None
     raise HTTPException(status_code=401, detail="Login yoki parol noto'g'ri")
 
@@ -173,8 +208,8 @@ def set_login_cookie(response: Response, uid: str) -> None:
 
 
 @router.post("/api/web/login")
-def login(body: LoginBody, session: SessionDep, response: Response) -> dict:
-    uid, user = check_login(session, body.username, body.password)
+def login(body: LoginBody, session: SessionDep, request: Request, response: Response) -> dict:
+    uid, user = check_login(session, body.username, body.password, request)
     if user is not None and access_of(user) is False:
         raise HTTPException(status_code=403, detail="Panel faqat admin uchun")
     set_login_cookie(response, uid)
@@ -486,6 +521,9 @@ _LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
 def connect_payload(port: int) -> str:
     """Telefon skanerlaydigan matn: {"pos":1,"urls":[...],"key":"..."}."""
     urls = [f"http://{ip}:{port}" for ip in netinfo.local_ips()]
+    public = funnel.public_url(port)
+    if public:
+        urls.append(public)  # Wi-Fi'dan tashqarida ilova shunga o'tadi
     return json.dumps({"pos": 1, "urls": urls, "key": settings.api_key}, separators=(",", ":"))
 
 
@@ -497,19 +535,32 @@ def _qr_svg(text: str) -> str:
     return img.to_string(encoding="unicode")
 
 
+def _owner_or_local(request: Request, session: Session, pos_web: str | None) -> None:
+    """Server kompyuterining o'zi (localhost, proksisiz) yoki panelga kirgan bosh admin."""
+    local = request.client is not None and request.client.host in _LOCAL_HOSTS
+    if local and not funnel.is_forwarded(request):
+        return
+    user = current_user(session, pos_web)
+    if user.branches is not None:
+        raise HTTPException(status_code=403, detail="Faqat bosh admin uchun")
+
+
+def _port(request: Request) -> int:
+    # Funnel orqali kelganda URL porti 443 — server porti emas.
+    return int(os.environ.get("POS_PORT", "8000")) if funnel.is_forwarded(request) else (request.url.port or 8000)
+
+
 @router.get("/ulash", include_in_schema=False)
 def connect_page(request: Request, session: SessionDep, pos_web: Annotated[str | None, Cookie()] = None) -> Response:
     """QR kodli sahifa. API kalitni ko'rsatgani uchun faqat server kompyuterining
     o'zida (localhost) yoki panelga kirgan bosh admin uchun ochiladi."""
-    local = request.client is not None and request.client.host in _LOCAL_HOSTS
-    if not local:
-        try:
-            user = current_user(session, pos_web)
-        except HTTPException:
+    try:
+        _owner_or_local(request, session, pos_web)
+    except HTTPException as e:
+        if e.status_code == 401:
             return RedirectResponse("/panel")
-        if user.branches is not None:
-            raise HTTPException(status_code=403, detail="Faqat bosh admin uchun")
-    payload = connect_payload(request.url.port or 8000)
+        raise
+    payload = connect_payload(_port(request))
     urls = json.loads(payload)["urls"]
     page = (PAGE.parent / "ulash.html").read_text(encoding="utf-8")
     page = page.replace("{{QR}}", _qr_svg(payload)).replace("{{URL}}", html.escape(urls[0]))
@@ -518,6 +569,31 @@ def connect_page(request: Request, session: SessionDep, pos_web: Annotated[str |
     kassa_url = urls[0] + "/"
     page = page.replace("{{KASSA_QR}}", _qr_svg(kassa_url)).replace("{{KASSA_URL}}", html.escape(kassa_url))
     return HTMLResponse(page, headers={"Cache-Control": "no-store"})
+
+
+class FunnelBody(BaseModel):
+    on: bool
+
+
+@router.get("/api/funnel")
+def funnel_status(request: Request, session: SessionDep, pos_web: Annotated[str | None, Cookie()] = None) -> dict:
+    _owner_or_local(request, session, pos_web)
+    return _with_qr(funnel.status(_port(request), fresh=True))
+
+
+@router.post("/api/funnel")
+def funnel_switch(body: FunnelBody, request: Request, session: SessionDep,
+                  pos_web: Annotated[str | None, Cookie()] = None) -> dict:
+    _owner_or_local(request, session, pos_web)
+    port = _port(request)
+    res = funnel.enable(port) if body.on else funnel.disable(port)
+    return {**res, "status": _with_qr(funnel.status(port, fresh=True))}
+
+
+def _with_qr(st: dict) -> dict:
+    if st.get("state") == "on" and st.get("url"):
+        return {**st, "qr": _qr_svg(st["url"] + "/")}
+    return st
 
 
 @router.get("/", include_in_schema=False)

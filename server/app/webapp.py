@@ -55,6 +55,8 @@ def index(request: Request, pos_web: Annotated[str | None, Cookie()] = None) -> 
         if not _logged_in(session, pos_web):
             return RedirectResponse("/kassa?next=/app/")
     origin = str(request.base_url).rstrip("/")
+    if request.headers.get("x-forwarded-proto") == "https" and origin.startswith("http://"):
+        origin = "https://" + origin[len("http://"):]  # Tailscale Funnel orqali
     cfg = json.dumps({"url": origin, "key": settings.api_key}).replace("</", "<\\/")
     page = (WEBAPP_DIR / "index.html").read_text(encoding="utf-8")
     page = page.replace(PLACEHOLDER, f"<script>window.POS_CONFIG = {cfg};</script>", 1)
