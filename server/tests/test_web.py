@@ -59,7 +59,7 @@ def login(client, username="admin", password="admin123"):
 
 
 def test_page_and_login_required(client):
-    assert client.get("/", follow_redirects=False).headers["location"] == "/panel"
+    assert client.get("/", follow_redirects=False).headers["location"] == "/kassa"
     assert "POS hisobot" in client.get("/panel").text
     assert client.get("/api/web/me").status_code == 401
 

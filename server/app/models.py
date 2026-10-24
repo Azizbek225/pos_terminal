@@ -74,3 +74,12 @@ class ServerInfo(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     server_id: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class ServerSetting(Base):
+    """Server kalit-qiymat sozlamalari (masalan web kassa chek raqami)."""
+
+    __tablename__ = "server_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(255), nullable=False)

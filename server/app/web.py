@@ -147,22 +147,29 @@ class LoginBody(BaseModel):
     password: str
 
 
-@router.post("/api/web/login")
-def login(body: LoginBody, session: SessionDep, response: Response) -> dict:
-    uname = body.username.strip().lower()
-    uid: str | None = None
+def check_login(session: Session, username: str, password: str) -> tuple[str, dict | None]:
+    """(user_id, xodim yozuvi) — API kalit bilan kirilganda yozuv None."""
+    uname = username.strip().lower()
     for u in _records(session, "users"):
         if str(u.get("username") or "").lower() == uname:
-            if verify_password(body.password, u.get("salt") or "", u.get("password_hash") or ""):
-                if access_of(u) is False:
-                    raise HTTPException(status_code=403, detail="Panel faqat admin uchun")
-                uid = u["id"]
+            if verify_password(password, u.get("salt") or "", u.get("password_hash") or ""):
+                return u["id"], u
             break
-    if uid is None and uname == "admin" and hmac.compare_digest(body.password, settings.api_key):
-        uid = KEY_USER
-    if uid is None:
-        raise HTTPException(status_code=401, detail="Login yoki parol noto'g'ri")
+    if uname == "admin" and hmac.compare_digest(password, settings.api_key):
+        return KEY_USER, None
+    raise HTTPException(status_code=401, detail="Login yoki parol noto'g'ri")
+
+
+def set_login_cookie(response: Response, uid: str) -> None:
     response.set_cookie(COOKIE, make_token(uid), max_age=TOKEN_TTL, httponly=True, samesite="lax")
+
+
+@router.post("/api/web/login")
+def login(body: LoginBody, session: SessionDep, response: Response) -> dict:
+    uid, user = check_login(session, body.username, body.password)
+    if user is not None and access_of(user) is False:
+        raise HTTPException(status_code=403, detail="Panel faqat admin uchun")
+    set_login_cookie(response, uid)
     return {"ok": True}
 
 
@@ -341,22 +348,32 @@ def sales(user: UserDep, session: SessionDep, date_from: DateFrom = None, date_t
     }
 
 
-@router.get("/api/web/stock")
-def stock(user: UserDep, session: SessionDep, branch_id: BranchQ = None) -> dict:
-    """Qoldiq ombor harakatlari yig'indisidan (ilovadagi kabi), filial bo'yicha."""
-    branches = _branches_filter(user, branch_id)
+def stock_qty(session: Session, branches: set[str] | None, product_ids: list[str] | None = None
+              ) -> dict[str, dict[str, float]]:
+    """{tovar: {filial: qoldiq}} — ombor harakatlari yig'indisi (ilovadagi kabi)."""
     qty: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     # Yig'indi bazaning o'zida: millionlab harakat Python'ga o'qilmaydi.
     branch_col = SyncRecord.data["branch_id"].as_string()
+    where = [SyncRecord.entity == "stock_movements", SyncRecord.deleted.is_(False)]
+    if product_ids is not None:
+        where.append(SyncRecord.ref.in_(product_ids))
     rows = session.execute(
         select(SyncRecord.ref, branch_col, func.sum(SyncRecord.data["qty"].as_float()))
-        .where(SyncRecord.entity == "stock_movements", SyncRecord.deleted.is_(False))
+        .where(*where)
         .group_by(SyncRecord.ref, branch_col)
     ).all()
     for product_id, b, q in rows:
         b = b or DEFAULT_BRANCH_ID
         if branches is None or b in branches:
             qty[product_id or ""][b] += q or 0
+    return qty
+
+
+@router.get("/api/web/stock")
+def stock(user: UserDep, session: SessionDep, branch_id: BranchQ = None) -> dict:
+    """Qoldiq ombor harakatlari yig'indisidan (ilovadagi kabi), filial bo'yicha."""
+    branches = _branches_filter(user, branch_id)
+    qty = stock_qty(session, branches)
     categories = {c["id"]: c.get("name") or "" for c in _records(session, "categories")}
     out = []
     for p in _records(session, "products"):
@@ -490,12 +507,15 @@ def connect_page(request: Request, session: SessionDep, pos_web: Annotated[str |
     page = page.replace("{{QR}}", _qr_svg(payload)).replace("{{URL}}", html.escape(urls[0]))
     page = page.replace("{{URLS}}", "<br>".join(html.escape(u) for u in urls[1:]) or "—")
     page = page.replace("{{KEY}}", html.escape(settings.api_key))
+    kassa_url = urls[0] + "/kassa"
+    page = page.replace("{{KASSA_QR}}", _qr_svg(kassa_url)).replace("{{KASSA_URL}}", html.escape(kassa_url))
     return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/", include_in_schema=False)
 def root() -> RedirectResponse:
-    return RedirectResponse("/panel")
+    # Server manzilini yozgan har kim kassaga tushadi; admin u yerdan hisobotga o'tadi.
+    return RedirectResponse("/kassa")
 
 
 @router.get("/panel", include_in_schema=False)

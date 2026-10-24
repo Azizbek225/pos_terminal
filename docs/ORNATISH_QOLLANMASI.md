@@ -179,6 +179,24 @@ Docker ham, Python ham kerak emas.
 
 Telefon va kompyuter **bitta Wi-Fi**'da bo'lishi kerak.
 
+### 6.0.1. Web kassa — brauzerda savdo (eng oson)
+
+PosServer ishlab turgan bo'lsa, ilovani o'rnatmasdan ham savdo qilish mumkin:
+
+1. Istalgan kompyuter yoki telefon brauzerida `http://<server IP>:8000` ni oching
+   (PosServer ochilganda chiqadigan sahifadagi QR kodni telefon kamerasi bilan skanerlash ham mumkin).
+2. Ilovadagi login va parol bilan kiring. Xodimlar hali yo'q bo'lsa: login `admin`, parol — API kalit.
+3. **Savdo:** USB skaner bilan shtrix-kodni o'qiting yoki nomini yozing (Enter — savatga).
+   **F2** — naqd, **F3** — karta, **F4** — nasiya. Chek kompyuterga ulangan istalgan printerdan
+   chop etiladi (brauzerning "Chop etish" oynasi; termoprinter uchun qog'oz kengligi 80 mm).
+4. **Cheklar** — kunlik cheklar, qayta chop etish, qaytarish (admin).
+   **Ombor** — kirim, yangi tovar, narxni o'zgartirish (admin, omborchi).
+   **Mijozlar** — nasiya qarzlari va to'lov qabul qilish.
+
+Web'dagi barcha savdo va kirimlar ilovalarga oddiy sinxronlash bilan boradi (chek raqamlari `W1-...`).
+Eslatma: web kassa server va tarmoq ishlab turganda ishlaydi. Internet/tarmoqsiz ham savdo
+qilish kerak bo'lsa, ilovadan foydalaning (6.4).
+
 ### 6.1. Docker bilan
 
 Docker o'rnating: Windows/macOS uchun **Docker Desktop**, Linux uchun `curl -fsSL https://get.docker.com | sh`.

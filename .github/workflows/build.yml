@@ -60,7 +60,7 @@ jobs:
             nohup uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/server.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/api/health && break; sleep 1; done
           cd ../app
-          SYNC_TEST_URL=http://127.0.0.1:8000 SYNC_TEST_KEY=ci-key flutter test test/sync_integration_test.dart
+          SYNC_TEST_URL=http://127.0.0.1:8000 SYNC_TEST_KEY=ci-key flutter test test/sync_integration_test.dart test/web_kassa_sync_test.dart
 
   # Har push/PR'dagi oxirgi build: Releases > "sinov-build" (artefakt limitiga kirmaydi).
   sinov-release:
