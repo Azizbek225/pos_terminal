@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <!-- `flutter build web --base-href /app/` (PosServer ilovani /app/ da beradi). -->
+  <base href="$FLUTTER_BASE_HREF">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="POS Terminal — brauzerda">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="POS Terminal">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="manifest" href="manifest.json">
+  <title>POS Terminal</title>
+  <style>
+    body { margin: 0; background: #f4f6f8; font: 16px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #6b7682; }
+    #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  </style>
+  <!--POS_CONFIG-->
+</head>
+<body>
+  <div id="loading">POS Terminal yuklanmoqda…</div>
+  <script>
+    window.addEventListener("flutter-first-frame", function () {
+      var l = document.getElementById("loading");
+      if (l) l.remove();
+    });
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

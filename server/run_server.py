@@ -22,7 +22,10 @@ import socket
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
+
+from app.netinfo import local_ips
 
 PORT = int(os.environ.get("POS_PORT", "8000"))
 DISCOVERY_PORT = int(os.environ.get("POS_DISCOVERY_PORT", "8765"))
@@ -46,28 +49,6 @@ def load_api_key(folder: Path) -> str:
     key = secrets.token_hex(6)
     key_file.write_text(key, encoding="utf-8")
     return key
-
-
-def local_ips() -> list[str]:
-    """Kompyuterning barcha lokal IPv4 manzillari (asosiysi birinchi)."""
-    ips: list[str] = []
-    try:
-        # Hech narsa yubormaydi: faqat tarmoqqa chiqadigan interfeys manzilini aniqlaydi.
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("10.255.255.255", 1))
-            ips.append(s.getsockname()[0])
-    except OSError:
-        pass
-    try:
-        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
-            ip = info[4][0]
-            if ip not in ips and not ip.startswith("127."):
-                ips.append(ip)
-    except OSError:
-        pass
-    # Wi-Fi odatda 192.168.x.x — shunday manzillar oldinda tursin.
-    ips.sort(key=lambda ip: 0 if ip.startswith("192.168.") else 1)
-    return ips or ["127.0.0.1"]
 
 
 def open_firewall() -> None:
@@ -179,6 +160,29 @@ def start_discovery(port: int = PORT, discovery_port: int = DISCOVERY_PORT) -> s
     return sock
 
 
+def open_connect_page(port: int = PORT) -> None:
+    """Qo'lda ishga tushirilganda QR kodli ulash sahifasini brauzerda ochish
+    (Windows yonganda avtomatik ishga tushishda ochilmaydi)."""
+    import webbrowser
+
+    def go() -> None:
+        for _ in range(30):
+            if already_running(port):
+                webbrowser.open(f"http://localhost:{port}/ulash")
+                return
+            time.sleep(0.5)
+
+    threading.Thread(target=go, name="pos-open-browser", daemon=True).start()
+
+
+def print_public_url(port: int = PORT) -> None:
+    from app import funnel
+
+    url = funnel.public_url(port)
+    if url:
+        print(f"  INTERNETDAN (istalgan joydan): {url}/", flush=True)
+
+
 def main() -> None:
     args = set(sys.argv[1:])
     if "--autostart-off" in args:
@@ -206,13 +210,15 @@ def main() -> None:
     print("  POS Terminal - sinxronlash serveri ishlayapti")
     print("=" * 56)
     ips = local_ips()
-    print(f"  Server manzili : http://{ips[0]}:{PORT}")
+    print(f"  DASTUR (brauzerda): http://{ips[0]}:{PORT}")
     for ip in ips[1:]:
-        print(f"  (yoki          : http://{ip}:{PORT})")
-    print(f"  API kalit      : {os.environ['POS_API_KEY']}")
+        print(f"  (yoki             : http://{ip}:{PORT})")
+    print("  Shu manzilni istalgan kompyuter yoki telefon brauzerida oching")
+    print("  va ilovadagi login/parol bilan kiring - boshqa sozlash kerak emas.")
     print()
-    print("  Shu ikkalasini har bir qurilmada yozing:")
-    print("  Sozlamalar > Sinxronlash")
+    print(f"  Ilovani ulash (QR) : brauzerda http://localhost:{PORT}/ulash")
+    print(f"  API kalit          : {os.environ['POS_API_KEY']}")
+    print()
     print("  Bu oynani yopmang (yopsangiz sinxronlash to'xtaydi).")
     if autostart:
         print("  Windows yonganda server o'zi ishga tushadi.")
@@ -222,6 +228,10 @@ def main() -> None:
     print("  push = yubordi, pull = oldi. Telefon IP si ko'rinmasa,")
     print("  telefon serverga yetib kelmayapti (Wi-Fi yoki firewall).")
     print("=" * 56, flush=True)
+
+    if not minimized:
+        open_connect_page()
+    threading.Thread(target=print_public_url, name="pos-funnel", daemon=True).start()
 
     import uvicorn
 

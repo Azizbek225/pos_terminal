@@ -417,7 +417,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   /// Baza fayli ilovaning shaxsiy papkasida saqlanadi (Hujjatlar papkasida emas —
   /// foydalanuvchi tasodifan o'chirib yubormasligi va bulutli sinxronlash
@@ -429,6 +429,8 @@ class AppDatabase extends _$AppDatabase {
   static QueryExecutor _openConnection() => driftDatabase(
         name: 'pos_terminal',
         native: const DriftNativeOptions(databaseDirectory: getApplicationSupportDirectory),
+        // Brauzer (web): baza brauzer xotirasida (OPFS / IndexedDB).
+        web: DriftWebOptions(sqlite3Wasm: Uri.parse('sqlite3.wasm'), driftWorker: Uri.parse('drift_worker.js')),
       );
 
   @override
@@ -472,12 +474,16 @@ class AppDatabase extends _$AppDatabase {
           for (final c in [sales.debtAmount, sales.customerId, sales.customerName]) {
             if (!await _columnExists('sales', c.name)) await m.addColumn(sales, c);
           }
+          // v6: sinxronlash uchun "yuborilmagan" yozuvlar indeksi (_createIndexes).
           await _createIndexes();
         },
         beforeOpen: (details) async {
           await customStatement('PRAGMA foreign_keys = ON');
           // WAL — bir vaqtda o'qish/yozishda tezlik.
           await customStatement('PRAGMA journal_mode = WAL');
+          // WAL bilan xavfsiz; har commit'da diskka to'liq yozmaydi — ko'p yozuvli
+          // sinxronlash bir necha barobar tez.
+          await customStatement('PRAGMA synchronous = NORMAL');
         },
       );
 
@@ -521,6 +527,11 @@ class AppDatabase extends _$AppDatabase {
     ];
     for (final s in stmts) {
       await customStatement(s);
+    }
+    // Faqat yuborilmagan (dirty) yozuvlar: katta bazada ham sinxronlash va
+    // "yuborilmagan: N" hisobi butun jadvalni o'qimaydi.
+    for (final t in SyncEntities.all) {
+      await customStatement('CREATE INDEX IF NOT EXISTS idx_${t}_dirty ON $t(updated_at, id) WHERE dirty = 1');
     }
   }
 

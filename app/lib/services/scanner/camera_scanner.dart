@@ -9,14 +9,20 @@ bool get cameraScanSupported =>
     !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
 
 /// Kamera skaneri sahifasini ochadi va topilgan kodni qaytaradi.
-Future<String?> scanWithCamera(BuildContext context) {
+Future<String?> scanWithCamera(
+  BuildContext context, {
+  String title = 'Shtrix-kodni skanerlash',
+  String hint = 'Shtrix-kodni ramka ichiga joylashtiring',
+}) {
   return Navigator.of(context).push<String>(
-    MaterialPageRoute(fullscreenDialog: true, builder: (_) => const _CameraScannerPage()),
+    MaterialPageRoute(fullscreenDialog: true, builder: (_) => _CameraScannerPage(title: title, hint: hint)),
   );
 }
 
 class _CameraScannerPage extends StatefulWidget {
-  const _CameraScannerPage();
+  const _CameraScannerPage({required this.title, required this.hint});
+  final String title;
+  final String hint;
 
   @override
   State<_CameraScannerPage> createState() => _CameraScannerPageState();
@@ -59,7 +65,7 @@ class _CameraScannerPageState extends State<_CameraScannerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Shtrix-kodni skanerlash'),
+        title: Text(widget.title),
         actions: [
           IconButton(
             tooltip: 'Chiroq',
@@ -87,11 +93,11 @@ class _CameraScannerPageState extends State<_CameraScannerPage> {
               ),
             ),
           ),
-          const Positioned(
+          Positioned(
             bottom: 40,
             child: Text(
-              'Shtrix-kodni ramka ichiga joylashtiring',
-              style: TextStyle(color: Colors.white, fontSize: 16, shadows: [Shadow(blurRadius: 4)]),
+              widget.hint,
+              style: const TextStyle(color: Colors.white, fontSize: 16, shadows: [Shadow(blurRadius: 4)]),
             ),
           ),
         ],

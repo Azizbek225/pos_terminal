@@ -18,7 +18,7 @@ import 'package:pos_terminal/services/notification_service.dart';
 
 /// Testlar uchun xotiradagi baza va barcha servislar to'plami.
 class TestEnv {
-  TestEnv() : db = AppDatabase(NativeDatabase.memory()) {
+  TestEnv([QueryExecutor? executor]) : db = AppDatabase(executor ?? NativeDatabase.memory()) {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     settings = SettingsRepository(db);
     Future<String> dev() => settings.deviceId();

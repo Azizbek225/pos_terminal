@@ -64,6 +64,8 @@ class AlertService {
   }
 
   Future<void> checkStock(Iterable<String> productIds) async {
+    // Sozlamalarda o'chirilgan bo'lsa — kam qolgan / tugagan tovar haqida xabar yo'q.
+    if (await settings.get(SettingKeys.stockAlerts) == '0') return;
     final list = await products.byIds(productIds.toSet());
     for (final p in list) {
       if (p.isDeleted || !p.isActive) continue;

@@ -1,13 +1,15 @@
-import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'app.dart';
 import 'startup_error.dart';
 import 'core/branch.dart';
 import 'core/constants.dart';
+import 'core/web_config.dart';
 import 'data/database.dart';
 import 'data/repositories/settings_repository.dart';
 import 'services/notification_service.dart';
@@ -35,6 +37,7 @@ Future<void> main() async {
 
     // Lokal baza — internetga bog'liq emas, ilova har doim shu bilan ishlaydi.
     db = AppDatabase();
+    if (kIsWeb) await _configureWeb(SettingsRepository(db));
     // Qurilma qaysi filialda ishlayotgani (birinchi kadrdan oldin — savdo noto'g'ri
     // filialga yozilmasligi uchun).
     final branchId = await SettingsRepository(db).get(SettingKeys.branchId);
@@ -63,4 +66,31 @@ Future<void> main() async {
     ],
     child: const PosApp(),
   ));
+}
+
+/// Brauzerda: ilova PosServer'ning o'zidan ochilgan — sinxronlash shu serverga
+/// o'zi ulanadi, rasmlar to'g'ridan-to'g'ri serverga yuklanadi.
+Future<void> _configureWeb(SettingsRepository settings) async {
+  final cfg = webServerConfig();
+  if (cfg == null) return;
+  final (url, key) = cfg;
+  await settings.setAll({
+    SettingKeys.syncUrl: url,
+    SettingKeys.syncApiKey: key,
+    SettingKeys.syncEnabled: '1',
+  });
+  final code = (await settings.get(SettingKeys.deviceCode))?.trim() ?? '';
+  if (code.isEmpty) {
+    // Har bir brauzerning cheklari alohida prefiks bilan (W + qurilma ID dan).
+    final id = (await settings.deviceId()).replaceAll('-', '').toUpperCase();
+    await settings.set(SettingKeys.deviceCode, 'W${id.substring(id.length - 3)}');
+  }
+  ProductImages.webUpload = (name, bytes) async {
+    final r = await http.put(
+      Uri.parse('$url/api/images/${Uri.encodeComponent(name)}'),
+      headers: {'X-API-Key': key, 'X-Device-Id': await settings.deviceId()},
+      body: bytes,
+    );
+    if (r.statusCode != 200) throw Exception('Rasm serverga yuklanmadi (${r.statusCode})');
+  };
 }

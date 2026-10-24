@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PosServer — boshlash</title>
+<style>
+  :root { --bg: #f4f6f8; --card: #fff; --text: #1d2329; --muted: #6b7682; --line: #e3e7eb; --accent: #1565c0; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #12161a; --card: #1b2127; --text: #e8ecef; --muted: #9aa5b1; --line: #2c343c; --accent: #64a8f0; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  main { max-width: 760px; margin: 0 auto; padding: 24px 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; gap: 24px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
+  h2 { margin: 0 0 8px; font-size: 20px; }
+  .go { display: inline-block; background: var(--accent); color: #fff; text-decoration: none; padding: 10px 18px; border-radius: 10px; font-weight: 600; }
+  .qr.sm { width: 220px; }
+  .qr { background: #fff; border-radius: 10px; padding: 8px; width: 300px; max-width: 100%; }
+  .qr svg { width: 100%; height: auto; display: block; }
+  .info { flex: 1; min-width: 240px; }
+  ol { padding-left: 20px; margin: 8px 0 16px; }
+  code { font-size: 15px; background: var(--bg); padding: 2px 6px; border-radius: 6px; word-break: break-all; }
+  .muted { color: var(--muted); font-size: 14px; }
+  a { color: var(--accent); }
+  button.go { border: 0; font: inherit; font-weight: 600; cursor: pointer; }
+  button.off { background: var(--muted); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1 style="margin-top:0">PosServer ishlayapti</h1>
+  <div class="card">
+    <div class="qr sm">{{KASSA_QR}}</div>
+    <div class="info">
+      <h2>1. Dastur — brauzerda</h2>
+      <p>Ilovaning o'zi, hech narsa o'rnatish va sozlash shart emas. Istalgan kompyuter yoki telefon brauzerida oching:</p>
+      <p><code>{{KASSA_URL}}</code></p>
+      <p class="muted">Telefonda — kamerani shu QR kodga qarating. Kirish: ilovadagi login va parol.
+        Birinchi marta: <b>admin</b> / <b>admin123</b> (yoki parol o'rniga pastdagi API kalit).</p>
+      <p><a class="go" href="/">Dasturni ochish</a></p>
+    </div>
+  </div>
+  <div class="card" id="net">
+    <div class="qr sm" id="netQr" hidden></div>
+    <div class="info">
+      <h2>Boshqa joydan — internet orqali</h2>
+      <p id="netText" class="muted">Tekshirilmoqda...</p>
+      <p id="netUrl" hidden><code></code></p>
+      <p><button class="go" id="netBtn" hidden></button>
+        <a class="go" id="netLink" target="_blank" rel="noopener" hidden></a></p>
+      <p class="muted" id="netErr"></p>
+    </div>
+  </div>
+  <h2>2. O'rnatilgan ilovani ulash (APK / Windows dastur)</h2>
+  <div class="card">
+    <div class="qr">{{QR}}</div>
+    <div class="info">
+      <ol>
+        <li>Ilovada: <b>Sozlamalar → Sinxronlash</b></li>
+        <li><b>"QR orqali ulash"</b> tugmasini bosing</li>
+        <li>Shu kodni kameraga ko'rsating — hammasi o'zi sozlanadi</li>
+      </ol>
+      <p class="muted">Kamerasiz qurilmada (kompyuter) qo'lda yozing:</p>
+      <p>Server manzili: <code>{{URL}}</code><br>
+        <span class="muted">Boshqa manzillar (Tailscale va h.k.): {{URLS}}</span><br>
+        API kalit: <code>{{KEY}}</code></p>
+      <p class="muted">Bu sahifada maxfiy kalit bor — uni begonalarga ko'rsatmang.
+        <a href="/panel">Hisobot paneli</a></p>
+    </div>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let timer = null;
+function show(st) {
+  const text = $("netText"), btn = $("netBtn"), link = $("netLink");
+  $("netQr").hidden = true; $("netUrl").hidden = true; btn.hidden = true; link.hidden = true;
+  btn.className = "go";
+  const pending = st.pending;
+  clearTimeout(timer);
+  if (pending) {
+    text.innerHTML = pending.action === "login"
+      ? "Tailscale hisobingizga kiring (Google bilan). Kirgach shu sahifa o'zi yangilanadi."
+      : "Bir marta ruxsat bering: havolani oching va <b>Enable</b> ni bosing. Keyin shu sahifa o'zi yangilanadi.";
+    if (pending.url) { link.hidden = false; link.href = pending.url; link.textContent = "Ruxsat sahifasini ochish"; }
+    timer = setTimeout(load, 3000);
+    return;
+  }
+  if (st.state === "not_installed") {
+    text.innerHTML = "Telefon do'konda bo'lmasa ham ishlashi uchun shu kompyuterga bepul <b>Tailscale</b> o'rnating " +
+      "(bir marta), Google bilan kiring, keyin shu sahifani yangilang. Telefonga hech narsa o'rnatilmaydi.";
+    link.hidden = false; link.href = st.download; link.textContent = "Tailscale'ni yuklab olish";
+  } else if (st.state === "stopped") {
+    text.textContent = "Tailscale o'rnatilgan, lekin ishlamayapti. Uni oching (soat yonidagi belgi) va kiring.";
+    btn.hidden = false; btn.textContent = "Qayta tekshirish"; btn.onclick = load;
+  } else if (st.state === "need_login") {
+    text.textContent = "Tailscale'ga kirish kerak (bir marta).";
+    btn.hidden = false; btn.textContent = "Tailscale'ga kirish"; btn.onclick = () => sw(true);
+  } else if (st.state === "off") {
+    text.innerHTML = "Hozir dastur faqat shu Wi-Fi'da ochiladi. Tugmani bossangiz doimiy havola paydo bo'ladi — " +
+      "telefon istalgan joydan (mobil internet) oddiy brauzerda ochadi.";
+    btn.hidden = false; btn.textContent = "Internetga ochish"; btn.onclick = () => sw(true);
+  } else if (st.state === "on") {
+    text.innerHTML = "Ochiq. Telefonda shu QR kodni skanerlang yoki havolani yozing — istalgan joydan ishlaydi " +
+      "(kompyuter yoniq bo'lsa). Kirish faqat login/parol bilan; xavfsizlik uchun internetdan " +
+      "<b>admin123</b> ishlamaydi — avval ilovada admin parolini o'zgartiring.";
+    $("netUrl").hidden = false; $("netUrl").firstChild.textContent = st.url + "/";
+    if (st.qr) { $("netQr").hidden = false; $("netQr").innerHTML = st.qr; }
+    btn.hidden = false; btn.className = "go off"; btn.textContent = "Internetdan yopish"; btn.onclick = () => sw(false);
+  }
+}
+async function call(opts) {
+  const r = await fetch("/api/funnel", opts);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+  return r.json();
+}
+async function load() {
+  try { show(await call()); } catch (e) { $("netErr").textContent = "Xato: " + e.message; }
+}
+async function sw(on) {
+  $("netErr").textContent = ""; $("netBtn").disabled = true; $("netText").textContent = "Bajarilmoqda...";
+  try {
+    const res = await call({method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({on})});
+    if (!res.ok && res.error) $("netErr").textContent = res.error;
+    show(res.pending ? {...res.status, pending: res.pending} : res.status);
+  } catch (e) { $("netErr").textContent = "Xato: " + e.message; }
+  $("netBtn").disabled = false;
+}
+load();
+</script>
+</body>
+</html>

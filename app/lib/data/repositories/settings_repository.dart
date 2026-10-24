@@ -22,6 +22,7 @@ class SettingKeys {
   static const targetCheckHour = 'target.checkHour';
   static const anomalyThreshold = 'anomaly.threshold';
   static const anomalyMultiplier = 'anomaly.multiplier';
+  static const stockAlerts = 'alerts.stock'; // 1 | 0 — kam qolgan / tugagan tovar bildirishnomalari
 
   static const printer1 = 'printer.1';
   static const printer2 = 'printer.2';

@@ -20,15 +20,18 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import __version__, printers, sync
+from . import __version__, kassa, printers, sync, web, webapp
 from .config import settings
-from .db import Base, engine, get_session
-from .models import Device, SyncRecord
+from .db import Base, SessionLocal, engine, get_session
+from .models import SyncRecord
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # Jadvallar birinchi ishga tushishda avtomatik yaratiladi.
     Base.metadata.create_all(engine)
+    sync.migrate(engine)
+    with SessionLocal() as session:
+        sync.init(session)
     yield
 
 
@@ -36,6 +39,9 @@ async def lifespan(_: FastAPI):
 DEFAULT_BRANCH_ID = "00000000-0000-4000-8000-200000000001"
 
 app = FastAPI(title="POS Terminal Sync", version=__version__, lifespan=lifespan)
+app.include_router(web.router)
+app.include_router(kassa.router)
+app.include_router(webapp.router)
 
 
 def require_key(x_api_key: Annotated[str | None, Header()] = None) -> None:
@@ -98,16 +104,7 @@ def pull(
 
 @app.get("/api/devices", dependencies=[Depends(require_key)])
 def devices(session: SessionDep) -> list[dict]:
-    rows = session.execute(select(Device)).scalars().all()
-    return [
-        {
-            "id": d.id,
-            "last_push_at": d.last_push_at,
-            "last_pull_at": d.last_pull_at,
-            "pushed_count": d.pushed_count,
-        }
-        for d in rows
-    ]
+    return sync.devices(session)
 
 
 # ---------------------------------------------------------------------------
@@ -218,3 +215,7 @@ def daily_report(
         "average": round(total / count) if count else 0,
         "by_cashier": dict(by_cashier),
     }
+
+
+# Oxirida: aniq yo'llar (/app/ sahifasi) statik fayllardan oldin tekshiriladi.
+webapp.mount(app)

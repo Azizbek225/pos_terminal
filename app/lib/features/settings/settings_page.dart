@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as pth;
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/constants.dart';
 import '../../data/repositories/settings_repository.dart';
 import '../../services/demo_data.dart';
 import '../../services/printing/printer_config.dart';
+import '../../services/scanner/camera_scanner.dart';
 import '../../services/sync/sync_service.dart';
 import '../../services/sync/server_discovery.dart';
 import '../../core/formatters.dart';
@@ -132,12 +136,33 @@ class _StoreSection extends StatelessWidget {
   );
 }
 
-class _AlertsSection extends StatelessWidget {
+class _AlertsSection extends ConsumerWidget {
   const _AlertsSection({required this.values});
   final Map<String, String> values;
 
   @override
-  Widget build(BuildContext context) => _KeyValueForm(
+  Widget build(BuildContext context, WidgetRef ref) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      SectionCard(
+        title: 'Tovar qoldig\'i bildirishnomalari',
+        child: SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: values[SettingKeys.stockAlerts] != '0',
+          title: const Text('Kam qolgan va tugagan tovarlar haqida xabar berish'),
+          subtitle: const Text("O'chirilsa, mavjud qoldiq xabarlari ham o'chiriladi"),
+          onChanged: (v) async {
+            await ref.read(settingsRepoProvider).set(SettingKeys.stockAlerts, v ? '1' : '0');
+            if (v) {
+              await ref.read(alertServiceProvider).checkAllStock();
+            } else {
+              await ref.read(alertRepoProvider).deleteAll(types: [AlertType.lowStock.code, AlertType.outOfStock.code]);
+            }
+          },
+        ),
+      ),
+      const SizedBox(height: 16),
+      _KeyValueForm(
     title: 'Alertlar',
     values: values,
     fields: const [
@@ -145,6 +170,8 @@ class _AlertsSection extends StatelessWidget {
       (SettingKeys.targetCheckHour, 'Maqsadni tekshirish soati (0–23)', true, 'Standart: 18'),
       (SettingKeys.anomalyThreshold, "Anomal chek chegarasi (so'm)", true, 'Standart: 5 000 000'),
       (SettingKeys.anomalyMultiplier, "O'rtacha chekdan necha barobar katta", true, 'Standart: 5'),
+    ],
+      ),
     ],
   );
 }
@@ -585,6 +612,51 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
     if (mounted) showMessage(context, 'Sinxronlash sozlamalari saqlandi');
   }
 
+  /// Saqlash, ulanishni tekshirish va sinxronlashni fonda boshlash.
+  Future<void> _testAndStart() async {
+    final service = ref.read(syncServiceProvider);
+    await _save();
+    try {
+      final msg = await service.testConnection();
+      // Ulanish ishlasa — sinxronlashni avtomatik yoqamiz (aks holda
+      // "Ulandi" chiqadi-yu, ma'lumot almashmaydi).
+      if (!_enabled) {
+        setState(() => _enabled = true);
+        await _save();
+      }
+      if (mounted) showMessage(context, "$msg. Sinxronlash fonda boshlandi — jarayon 'Holat' qatorida.");
+      // Ko'p yozuv bo'lsa sinxronlash uzoq davom etadi: natijani kutmaymiz.
+      unawaited(service.syncNow());
+    } catch (e) {
+      if (mounted) showMessage(context, e.toString(), error: true);
+    }
+  }
+
+  /// PosServer ekranidagi (localhost:8000/ulash) QR kodni skanerlab, manzil va
+  /// kalitni o'zi yozadi va ulanadi.
+  Future<void> _scanQr() async {
+    final raw = await scanWithCamera(
+      context,
+      title: 'Server QR kodini skanerlash',
+      hint: "Kompyuterdagi PosServer QR kodini ko'rsating",
+    );
+    if (raw == null || !mounted) return;
+    final qr = SyncService.parseConnectQr(raw);
+    if (qr == null) {
+      showMessage(context, "Bu PosServer QR kodi emas. Kompyuterda localhost:8000/ulash sahifasini oching.", error: true);
+      return;
+    }
+    showMessage(context, 'Server qidirilmoqda...');
+    final url = await ref.read(syncServiceProvider).firstReachable(qr.urls) ?? qr.urls.first;
+    if (!mounted) return;
+    setState(() {
+      _url.text = url;
+      _key.text = qr.key;
+      _enabled = true;
+    });
+    await _testAndStart();
+  }
+
   /// Bitta Wi-Fi'dagi PosServer'ni topib, manzilini maydonga yozadi.
   Future<void> _findServer() async {
     setState(() => _searching = true);
@@ -706,25 +778,13 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
             runSpacing: 8,
             alignment: WrapAlignment.end,
             children: [
-              OutlinedButton(
-                onPressed: () async {
-                  await _save();
-                  try {
-                    final msg = await service.testConnection();
-                    // Ulanish ishlasa — sinxronlashni avtomatik yoqamiz (aks holda
-                    // "Ulandi" chiqadi-yu, ma'lumot almashmaydi).
-                    if (!_enabled) {
-                      setState(() => _enabled = true);
-                      await _save();
-                    }
-                    await service.syncNow();
-                    if (context.mounted) showMessage(context, '$msg. Sinxronlash yoqildi.');
-                  } catch (e) {
-                    if (context.mounted) showMessage(context, e.toString(), error: true);
-                  }
-                },
-                child: const Text('Ulanishni tekshirish'),
-              ),
+              if (cameraScanSupported)
+                FilledButton.tonalIcon(
+                  onPressed: _scanQr,
+                  icon: const Icon(Icons.qr_code_scanner),
+                  label: const Text('QR orqali ulash'),
+                ),
+              OutlinedButton(onPressed: _testAndStart, child: const Text('Ulanishni tekshirish')),
               OutlinedButton(
                 onPressed: () async {
                   if (await confirmDialog(

@@ -17,13 +17,16 @@ def make_engine(url: str):
     engine = create_engine(
         url,
         pool_pre_ping=True,
-        connect_args={"check_same_thread": False} if is_sqlite else {},
+        # timeout: boshqa qurilma yozayotgan bo'lsa, "database is locked" o'rniga kutadi.
+        connect_args={"check_same_thread": False, "timeout": 30} if is_sqlite else {},
     )
     if is_sqlite:
         @event.listens_for(engine, "connect")
         def _pragma(dbapi_conn, _):  # pragma: no cover - faqat SQLite
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA journal_mode=WAL")
+            # WAL bilan xavfsiz va har commit'da diskka to'liq yozishdan ancha tez.
+            cur.execute("PRAGMA synchronous=NORMAL")
             cur.close()
     return engine
 

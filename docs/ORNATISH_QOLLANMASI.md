@@ -179,6 +179,40 @@ Docker ham, Python ham kerak emas.
 
 Telefon va kompyuter **bitta Wi-Fi**'da bo'lishi kerak.
 
+### 6.0.1. Dastur brauzerda (eng oson — o'rnatish va sozlash shart emas)
+
+PosServer ishlab turgan bo'lsa, ilovaning **o'zi** (savdo, ombor, tarix, qarzlar, monitoring,
+sozlamalar — hammasi) istalgan kompyuter yoki telefon brauzerida ochiladi:
+
+1. Brauzerda `http://<server IP>:8000` ni oching (PosServer ochilganda chiqadigan sahifadagi
+   QR kodni telefon kamerasi bilan skanerlash ham mumkin).
+2. Birinchi oynada login va parol (birinchi marta: `admin` / `admin123`). Keyin ilovaning
+   o'z login oynasi chiqadi — xuddi telefondagi kabi.
+3. Sinxronlash o'zi sozlanadi: server manzili va API kalitni yozish shart emas.
+4. **Chek chiqarish:** Sozlamalar → Printerlar → ulanish turi **"Kompyuter printeri (server orqali)"**
+   va ro'yxatdan printerni tanlang (PosServer turgan kompyuterdagi printer).
+   Brauzerda Bluetooth/USB printer va kamera skaner ishlamaydi — USB skaner esa ishlaydi.
+
+Har bir brauzer o'z bazasini saqlaydi va serverga sinxronlanadi; tarmoq bir zum uzilsa ham
+savdo davom etadi, tarmoq qaytganda yuboriladi. Brauzer ma'lumotlarini (cache/cookie)
+tozalasangiz, sinxronlanmagan yozuvlar yo'qolishi mumkin.
+
+Yengil variant ham bor: `http://<server IP>:8000/kassa` — faqat savdo, kirim va nasiya
+(eski kompyuter yoki sekin telefon uchun).
+
+### 6.0.2. Telefon boshqa joyda bo'lsa (internet orqali, bepul)
+
+1. PosServer kompyuteriga bepul **Tailscale** o'rnating (https://tailscale.com/download/windows) va Google bilan kiring — bir marta.
+2. Kompyuterda `http://localhost:8000/ulash` sahifasida **"Internetga ochish"** tugmasini bosing.
+   Birinchi marta Tailscale ruxsat sahifasi ochiladi — **Enable** ni bosing.
+3. Sahifada doimiy havola (`https://<kompyuter>.<nom>.ts.net/`) va QR kod chiqadi. Telefonda uni
+   istalgan joydan (mobil internet) oddiy brauzerda oching — telefonga hech narsa o'rnatilmaydi.
+
+Havola o'zgarmaydi, kompyuter qayta yonganda ham ishlayveradi (kompyuter yoniq bo'lishi kerak).
+Xavfsizlik: internetdan kirishda boshlang'ich `admin123` paroli ishlamaydi — ilovada admin parolini
+o'zgartiring; 10 ta xato urinishdan keyin manzil 10 daqiqaga bloklanadi. Yopish: o'sha sahifada
+"Internetdan yopish".
+
 ### 6.1. Docker bilan
 
 Docker o'rnating: Windows/macOS uchun **Docker Desktop**, Linux uchun `curl -fsSL https://get.docker.com | sh`.

@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 /// Tarmoqda topilgan PosServer.
 class DiscoveredServer {
   const DiscoveredServer(this.url, this.name);
@@ -24,6 +26,8 @@ class ServerDiscovery {
     int discoveryPort = port,
     List<InternetAddress>? targets,
   }) async {
+    // Brauzerda UDP yo'q (web ilova serverning o'zidan ochiladi).
+    if (kIsWeb) return const [];
     final found = <String, DiscoveredServer>{};
     RawDatagramSocket? sock;
     try {

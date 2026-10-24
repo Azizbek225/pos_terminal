@@ -142,6 +142,9 @@ class PrinterService {
   }
 
   Future<void> _sendNow(PrinterConfig cfg, List<int> bytes) async {
+    if (kIsWeb && cfg.connection != PrinterConnection.server && cfg.connection != PrinterConnection.none) {
+      throw PrintException("Brauzerda faqat 'Kompyuter printeri (server orqali)' ishlaydi (Sozlamalar → Printerlar)");
+    }
     switch (cfg.connection) {
       case PrinterConnection.none:
         throw PrintException('Printer o\'chirilgan');
@@ -274,6 +277,7 @@ class PrinterService {
 
   /// Juftlangan Bluetooth printerlar ro'yxati: (nom, MAC).
   Future<List<(String, String)>> pairedBluetooth() async {
+    if (kIsWeb) return [];
     try {
       final list = await PrintBluetoothThermal.pairedBluetooths;
       return list.map((b) => (b.name, b.macAdress)).toList();
@@ -285,6 +289,7 @@ class PrinterService {
 
   /// Tizimga o'rnatilgan printerlar nomlari.
   Future<List<String>> systemPrinters() async {
+    if (kIsWeb) return [];
     try {
       if (Platform.isWindows) {
         final r = await Process.run(

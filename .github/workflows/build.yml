@@ -61,9 +61,37 @@ jobs:
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:8000/api/health && break; sleep 1; done
           cd ../app
           SYNC_TEST_URL=http://127.0.0.1:8000 SYNC_TEST_KEY=ci-key flutter test test/sync_integration_test.dart
+          # Alohida: web kassa cheklari yuqoridagi testning aniq chek ro'yxatiga aralashmasin.
+          SYNC_TEST_URL=http://127.0.0.1:8000 SYNC_TEST_KEY=ci-key flutter test test/web_kassa_sync_test.dart
+
+  # Har push/PR'dagi oxirgi build: Releases > "sinov-build" (artefakt limitiga kirmaydi).
+  sinov-release:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      REF: ${{ github.head_ref || github.ref_name }}
+    steps:
+      - name: sinov-build relizini tayyorlash
+        run: |
+          notes="Oxirgi sinov build: $REF @ ${SHA:0:7} ($(date -u '+%Y-%m-%d %H:%M') UTC). Fayllar build tugagach shu yerga yuklanadi."
+          if gh release view sinov-build --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit sinov-build --repo "$GITHUB_REPOSITORY" --prerelease --notes "$notes"
+          else
+            gh release create sinov-build --repo "$GITHUB_REPOSITORY" --prerelease --target "$SHA" \
+              --title "Sinov build (oxirgi)" --notes "$notes"
+          fi
 
   android:
-    needs: test
+    needs: [test, sinov-release]
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     env:
       KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -101,9 +129,20 @@ jobs:
             cp build/app/outputs/bundle/release/app-release.aab ../dist/pos-terminal-android.aab
           fi
       - uses: actions/upload-artifact@v4
+        # Artefakt joyi to'lsa ham build qizil bo'lmasin (APK, exe, zip Releases'ga ham yuklanadi).
+        continue-on-error: true
         with:
           name: android
           path: dist/*
+          # Bepul akkauntda artefakt joyi cheklangan: eski build'lar 7 kunda o'chadi.
+          retention-days: 7
+      - name: Sinov build'ni Releases'ga yuklash
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        shell: bash
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload sinov-build dist/pos-terminal-android.apk --clobber --repo "$GITHUB_REPOSITORY"
 
   linux:
     needs: test
@@ -123,12 +162,18 @@ jobs:
           mkdir -p ../dist
           tar -C build/linux/x64/release -czf ../dist/pos-terminal-linux-x64.tar.gz bundle
       - uses: actions/upload-artifact@v4
+        # Artefakt joyi to'lsa ham build qizil bo'lmasin (APK, exe, zip Releases'ga ham yuklanadi).
+        continue-on-error: true
         with:
           name: linux
           path: dist/*
+          # Bepul akkauntda artefakt joyi cheklangan: eski build'lar 7 kunda o'chadi.
+          retention-days: 7
 
   windows:
-    needs: test
+    needs: [test, sinov-release]
+    permissions:
+      contents: write
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -145,11 +190,24 @@ jobs:
           New-Item -ItemType Directory -Force -Path ../dist | Out-Null
           Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath ../dist/pos-terminal-windows-x64.zip
       - uses: actions/upload-artifact@v4
+        # Artefakt joyi to'lsa ham build qizil bo'lmasin (APK, exe, zip Releases'ga ham yuklanadi).
+        continue-on-error: true
         with:
           name: windows
           path: dist/*
+          # Bepul akkauntda artefakt joyi cheklangan: eski build'lar 7 kunda o'chadi.
+          retention-days: 7
+      - name: Sinov build'ni Releases'ga yuklash
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        shell: bash
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload sinov-build dist/pos-terminal-windows-x64.zip --clobber --repo "$GITHUB_REPOSITORY"
 
   macos:
+    # Faqat reliz tegida: macOS daqiqalari 10 barobar qimmat.
+    if: startsWith(github.ref, 'refs/tags/')
     needs: test
     runs-on: macos-latest
     steps:
@@ -165,11 +223,17 @@ jobs:
           mkdir -p ../dist
           ditto -c -k --keepParent "build/macos/Build/Products/Release/POS Terminal.app" ../dist/pos-terminal-macos.zip
       - uses: actions/upload-artifact@v4
+        # Artefakt joyi to'lsa ham build qizil bo'lmasin (APK, exe, zip Releases'ga ham yuklanadi).
+        continue-on-error: true
         with:
           name: macos
           path: dist/*
+          # Bepul akkauntda artefakt joyi cheklangan: eski build'lar 7 kunda o'chadi.
+          retention-days: 7
 
   ios:
+    # Faqat reliz tegida: macOS daqiqalari 10 barobar qimmat.
+    if: startsWith(github.ref, 'refs/tags/')
     needs: test
     runs-on: macos-latest
     steps:
@@ -187,9 +251,13 @@ jobs:
           cp -R build/ios/iphoneos/Runner.app ../dist/Payload/
           cd ../dist && zip -qr pos-terminal-ios-unsigned.ipa Payload && rm -rf Payload
       - uses: actions/upload-artifact@v4
+        # Artefakt joyi to'lsa ham build qizil bo'lmasin (APK, exe, zip Releases'ga ham yuklanadi).
+        continue-on-error: true
         with:
           name: ios
           path: dist/*
+          # Bepul akkauntda artefakt joyi cheklangan: eski build'lar 7 kunda o'chadi.
+          retention-days: 7
 
   server-image:
     needs: test
@@ -201,7 +269,9 @@ jobs:
         run: docker build -t pos-terminal-sync:ci .
 
   server-windows:
-    needs: test
+    needs: [test, sinov-release]
+    permissions:
+      contents: write
     runs-on: windows-latest
     defaults:
       run:
@@ -212,12 +282,41 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt pyinstaller
+      # Ilovaning brauzer versiyasi (http://<server>:8000/app/) exe ichiga qo'shiladi.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Ilova (web) build
+        working-directory: app
+        shell: bash
+        # Git Bash "/app/" ni Windows yo'liga aylantirmasin.
+        env:
+          MSYS_NO_PATHCONV: "1"
+        run: |
+          flutter pub get
+          flutter build web --release --base-href /app/
+          rm -rf ../server/app/static/webapp
+          cp -r build/web ../server/app/static/webapp
       # Bitta fayl: Docker/PostgreSQL'siz, baza exe yonida (pos.db).
-      - run: pyinstaller --onefile --name PosServer --collect-submodules uvicorn --distpath ../dist run_server.py
+      # Web panel sahifasi (app/static) exe ichiga qo'shiladi.
+      - run: pyinstaller --onefile --name PosServer --collect-submodules uvicorn --add-data "app/static:app/static" --distpath ../dist run_server.py
       - uses: actions/upload-artifact@v4
+        # Artefakt joyi to'lsa ham build qizil bo'lmasin (APK, exe, zip Releases'ga ham yuklanadi).
+        continue-on-error: true
         with:
           name: server-windows
           path: dist/PosServer.exe
+          # Bepul akkauntda artefakt joyi cheklangan: eski build'lar 7 kunda o'chadi.
+          retention-days: 7
+      - name: Sinov build'ni Releases'ga yuklash
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        shell: bash
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload sinov-build dist/PosServer.exe --clobber --repo "$GITHUB_REPOSITORY"
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

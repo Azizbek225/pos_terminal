@@ -32,8 +32,17 @@ class SyncRecord(Base):
     # Monoton o'suvchi global tartib raqami — pull kursori.
     seq: Mapped[int] = mapped_column(BigInteger, nullable=False)
     received_at: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # Hisobotlar uchun indekslangan nusxalar (JSON ichidan): yaratilgan vaqt va
+    # bog'liq yozuv (chek qatori -> chek, harakat -> tovar ...). Millionlab
+    # yozuvda web panel butun jadvalni o'qimasligi uchun.
+    ts: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    __table_args__ = (Index("ix_sync_records_seq", "seq", unique=True),)
+    __table_args__ = (
+        Index("ix_sync_records_seq", "seq", unique=True),
+        Index("ix_sync_records_entity_ts", "entity", "ts"),
+        Index("ix_sync_records_entity_ref", "entity", "ref"),
+    )
 
 
 class SyncCounter(Base):
@@ -65,3 +74,12 @@ class ServerInfo(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     server_id: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class ServerSetting(Base):
+    """Server kalit-qiymat sozlamalari (masalan web kassa chek raqami)."""
+
+    __tablename__ = "server_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(255), nullable=False)

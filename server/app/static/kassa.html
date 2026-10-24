@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POS Kassa</title>
+<style>
+  :root {
+    --bg: #f4f6f8; --card: #fff; --text: #1d2329; --muted: #6b7682; --line: #e3e7eb;
+    --accent: #1565c0; --accent-soft: #e3eefb; --ok: #2e7d32; --bad: #c62828; --warn: #ef6c00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161a; --card: #1b2127; --text: #e8ecef; --muted: #9aa5b1; --line: #2c343c;
+      --accent: #64a8f0; --accent-soft: #1e3044; --ok: #66bb6a; --bad: #ef5350; --warn: #ffa726;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  header { background: var(--card); border-bottom: 1px solid var(--line); }
+  .bar { padding: 8px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .brand { font-weight: 700; font-size: 17px; }
+  nav { display: flex; gap: 2px; margin-right: auto; overflow-x: auto; }
+  nav button { border: 0; background: none; color: var(--muted); padding: 8px 12px; font: inherit; cursor: pointer; border-radius: 8px; white-space: nowrap; }
+  nav button.on { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  input, select, textarea, button.btn { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  button.btn { cursor: pointer; }
+  button.btn:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.danger { color: var(--bad); border-color: var(--bad); }
+  button.big { font-size: 18px; padding: 12px 16px; font-weight: 600; }
+  .muted { color: var(--muted); } .bad { color: var(--bad); } .ok { color: var(--ok); } .warn { color: var(--warn); }
+  .n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .hidden { display: none !important; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+  .err { color: var(--bad); min-height: 20px; font-size: 14px; }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+  .tag.bad { background: transparent; border: 1px solid var(--bad); color: var(--bad); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  tr.click { cursor: pointer; } tr.click:hover { background: var(--accent-soft); }
+  .page { padding: 12px 16px; }
+  .tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .empty { padding: 24px; text-align: center; color: var(--muted); }
+
+  /* --- Savdo --- */
+  #sell { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 12px; padding: 12px 16px; height: calc(100vh - 58px); }
+  #sell .left, #sell .right { display: flex; flex-direction: column; min-height: 0; }
+  #q { font-size: 18px; padding: 12px 14px; width: 100%; }
+  #results { margin-top: 10px; overflow-y: auto; flex: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; align-content: start; }
+  .prod { padding: 10px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; user-select: none; }
+  .prod:hover, .prod.sel { border-color: var(--accent); }
+  .prod .nm { font-weight: 600; line-height: 1.25; }
+  .prod img { width: 100%; height: 90px; object-fit: contain; border-radius: 8px; background: var(--bg); }
+  .prod .row { display: flex; justify-content: space-between; gap: 6px; font-size: 13px; }
+  .prod .price { font-weight: 700; font-size: 15px; color: var(--accent); }
+  .right .card { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+  #cart { flex: 1; overflow-y: auto; }
+  .line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  .line .nm { font-weight: 600; }
+  .line .ctl { display: flex; gap: 4px; align-items: center; }
+  .line .ctl input { width: 74px; text-align: center; padding: 5px; }
+  .line .ctl button { width: 32px; padding: 5px 0; }
+  .sum { padding: 10px 12px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+  .sum .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .sum .total { font-size: 26px; font-weight: 800; }
+  .pays { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  @media (max-width: 900px) {
+    #sell { grid-template-columns: 1fr; height: auto; }
+    #results { max-height: 45vh; }
+    #cart { max-height: none; }
+    #sell .sum { position: sticky; bottom: 0; background: var(--card); border-radius: 0 0 12px 12px; box-shadow: 0 -4px 12px rgba(0,0,0,.08); }
+  }
+
+  /* --- Oyna --- */
+  dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--text); padding: 0; width: min(520px, calc(100vw - 24px)); }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog .hd { padding: 14px 16px; border-bottom: 1px solid var(--line); font-weight: 700; font-size: 17px; display: flex; justify-content: space-between; align-items: center; }
+  dialog .bd { padding: 14px 16px; display: grid; gap: 10px; max-height: 70vh; overflow-y: auto; }
+  dialog .ft { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  dialog label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  dialog label { min-width: 0; }
+  dialog label input[type=checkbox] { width: auto; }
+  dialog label input, dialog label select { color: var(--text); font-size: 16px; width: 100%; min-width: 0; }
+  .f2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .x { border: 0; background: none; font-size: 22px; color: var(--muted); cursor: pointer; line-height: 1; }
+  .change { font-size: 22px; font-weight: 800; }
+
+  #login { max-width: 360px; margin: 12vh auto; padding: 22px; }
+  #login input { width: 100%; margin-bottom: 10px; font-size: 16px; }
+  #login button { width: 100%; }
+
+  /* --- Chek (chop etish) --- */
+  #receipt { display: none; }
+  .rc { font: 12px/1.35 "Courier New", monospace; color: #000; width: 72mm; }
+  .rc .c { text-align: center; } .rc .b { font-weight: 700; }
+  .rc .r { display: flex; justify-content: space-between; gap: 6px; }
+  .rc hr { border: 0; border-top: 1px dashed #000; margin: 4px 0; }
+  .preview { background: #fff; border-radius: 8px; padding: 10px; display: flex; justify-content: center; }
+  @media print {
+    @page { margin: 2mm; }
+    body > *:not(#receipt) { display: none !important; }
+    #receipt { display: block; }
+    body { background: #fff; }
+  }
+</style>
+</head>
+<body>
+
+<div id="loginBox" class="hidden">
+  <form id="login" class="card">
+    <h2 style="margin-top:0">POS Kassa</h2>
+    <input id="lu" placeholder="Login" autocomplete="username" required>
+    <input id="lp" type="password" placeholder="Parol" autocomplete="current-password" required>
+    <div class="err" id="loginErr"></div>
+    <button class="btn primary big" type="submit">Kirish</button>
+    <p class="muted" style="font-size:13px;margin-bottom:0">Ilovadagi login va parol bilan kiring. Birinchi marta: <b>admin</b> / <b>admin123</b>.</p>
+  </form>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <div class="bar">
+      <span class="brand">Kassa</span>
+      <nav id="tabs">
+        <button data-tab="sell" class="on">Savdo</button>
+        <button data-tab="sales">Cheklar</button>
+        <button data-tab="stock">Ombor</button>
+        <button data-tab="customers">Mijozlar</button>
+      </nav>
+      <select id="branch" title="Filial"></select>
+      <span id="who" class="muted"></span>
+      <a class="muted" href="/panel" id="panelLink" title="Hisobot paneli">Hisobot</a>
+      <button class="btn" id="logout">Chiqish</button>
+    </div>
+  </header>
+
+  <section id="sell">
+    <div class="left">
+      <input id="q" placeholder="Tovar nomi yoki shtrix-kod (skaner) — Enter" autocomplete="off">
+      <div id="results"></div>
+    </div>
+    <div class="right">
+      <div class="card">
+        <div id="cart"></div>
+        <div class="sum">
+          <div class="row"><span class="muted">Jami</span><span class="n" id="subtotal">0</span></div>
+          <div class="row">
+            <span class="muted">Chegirma</span>
+            <span style="display:flex;gap:6px">
+              <select id="discType"><option value="none">yo'q</option><option value="percent">%</option><option value="amount">so'm</option></select>
+              <input id="discVal" type="number" min="0" step="any" style="width:100px" disabled>
+            </span>
+          </div>
+          <div class="row"><span class="muted" id="discShow"></span></div>
+          <div class="row"><span>To'lov</span><span class="total n" id="total">0</span></div>
+          <div class="pays">
+            <button class="btn primary big" data-pay="cash" title="F2">Naqd</button>
+            <button class="btn big" data-pay="card" title="F3">Karta</button>
+            <button class="btn big" data-pay="debt" title="F4">Nasiya</button>
+          </div>
+          <div class="row">
+            <button class="btn" id="clearCart">Savatni tozalash</button>
+            <label class="muted" style="font-size:13px"><input type="checkbox" id="autoPrint"> Chekni avto chop etish</label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="sales" class="page hidden">
+    <div class="tools">
+      <input type="date" id="salesDate">
+      <span class="muted" id="salesSum"></span>
+    </div>
+    <div class="card" style="overflow-x:auto"><table>
+      <thead><tr><th>Vaqt</th><th>Chek</th><th>Kassir</th><th>To'lov</th><th class="n">Summa</th><th></th></tr></thead>
+      <tbody id="salesRows"></tbody>
+    </table></div>
+  </section>
+
+  <section id="stock" class="page hidden">
+    <div class="tools">
+      <input id="sq" placeholder="Qidirish" style="flex:1;min-width:180px">
+      <label class="muted"><input type="checkbox" id="lowOnly"> Faqat kam qolgan</label>
+      <button class="btn primary" id="newProduct">+ Yangi tovar</button>
+    </div>
+    <div class="card" style="overflow-x:auto"><table>
+      <thead><tr><th>Tovar</th><th>Shtrix-kod</th><th class="n">Kirim narxi</th><th class="n">Sotuv narxi</th><th class="n">Qoldiq</th><th></th></tr></thead>
+      <tbody id="stockRows"></tbody>
+    </table></div>
+  </section>
+
+  <section id="customers" class="page hidden">
+    <div class="tools">
+      <input id="cq" placeholder="Qidirish" style="flex:1;min-width:180px">
+      <button class="btn primary" id="newCustomer">+ Yangi mijoz</button>
+    </div>
+    <div class="card" style="overflow-x:auto"><table>
+      <thead><tr><th>Mijoz</th><th>Telefon</th><th class="n">Qarz</th><th></th></tr></thead>
+      <tbody id="custRows"></tbody>
+    </table></div>
+  </section>
+</div>
+
+<dialog id="dlg"><form method="dialog" id="dlgForm">
+  <div class="hd"><span id="dlgTitle"></span><button class="x" value="cancel" formnovalidate>×</button></div>
+  <div class="bd" id="dlgBody"></div>
+  <div class="err" id="dlgErr" style="padding:0 16px"></div>
+  <div class="ft" id="dlgFt"></div>
+</form></dialog>
+
+<div id="receipt"></div>
+
+<script>
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const money = v => Math.round(v || 0).toLocaleString("ru-RU").replace(/ /g, " ");
+const qtyFmt = v => (Math.round(v * 1000) / 1000).toString();
+const PAY = {cash: "Naqd", card: "Karta", transfer: "O'tkazma", mixed: "Aralash", debt: "Nasiya"};
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+const S = { me: null, branch: "", role: "", products: [], byId: new Map(), categories: [], customers: [], cart: [], tab: "sell" };
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, {
+    method: opts.body ? "POST" : "GET",
+    headers: opts.body ? {"Content-Type": "application/json"} : {},
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    credentials: "same-origin",
+  });
+  if (r.status === 401 && !path.endsWith("/login")) { showLogin(); throw new Error("Kirish kerak"); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const d = data.detail;
+    throw new Error(typeof d === "string" ? d : Array.isArray(d) ? "Ma'lumot noto'g'ri kiritildi" : "Xatolik: " + r.status);
+  }
+  return data;
+}
+
+// ---------------------------------------------------------------- Kirish
+function showLogin() { $("#app").classList.add("hidden"); $("#loginBox").classList.remove("hidden"); $("#lu").focus(); }
+
+$("#login").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("#loginErr").textContent = "";
+  try {
+    await api("/api/kassa/login", {body: {username: $("#lu").value, password: $("#lp").value}});
+    $("#lp").value = "";
+    await start();
+  } catch (err) { $("#loginErr").textContent = err.message; }
+});
+
+$("#logout").onclick = async () => { await api("/api/web/logout", {body: {}}).catch(() => {}); showLogin(); };
+
+// /kassa?next=/app/ — to'liq ilovaga kirish uchun login (faqat shu sayt ichidagi manzil).
+const NEXT = (() => { const n = new URLSearchParams(location.search).get("next") || ""; return /^\/[a-z]/i.test(n) ? n : ""; })();
+
+if (NEXT) { $("#login h2").textContent = "POS Terminal"; document.title = "POS Terminal"; }
+
+async function start() {
+  S.me = await api("/api/kassa/me");
+  if (NEXT) { location.replace(NEXT); return; }
+  if (!S.me.branches.length) { showLogin(); $("#loginErr").textContent = "Sizga hech bir filialga ruxsat berilmagan"; return; }
+  $("#loginBox").classList.add("hidden");
+  $("#app").classList.remove("hidden");
+  $("#who").textContent = S.me.name;
+  const sel = $("#branch");
+  sel.innerHTML = S.me.branches.map(b => `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join("");
+  const saved = store.get("kassa.branch", "");
+  sel.value = S.me.branches.some(b => b.id === saved) ? saved : S.me.branches[0].id;
+  sel.classList.toggle("hidden", S.me.branches.length < 2);
+  await setBranch(sel.value);
+}
+
+$("#branch").onchange = e => setBranch(e.target.value);
+
+async function setBranch(id) {
+  S.branch = id;
+  store.set("kassa.branch", id);
+  S.role = S.me.branches.find(b => b.id === id)?.role || "cashier";
+  $("#panelLink").classList.toggle("hidden", S.role !== "admin");
+  $$('[data-tab="stock"]').forEach(b => b.classList.toggle("hidden", S.role === "cashier"));
+  S.cart = store.get("kassa.cart." + id, []);
+  await loadProducts();
+  renderCart();
+  if (S.tab === "stock" && S.role === "cashier") showTab("sell");
+  else showTab(S.tab);
+}
+
+// ---------------------------------------------------------------- Tovarlar
+async function loadProducts() {
+  const d = await api("/api/kassa/products?branch_id=" + encodeURIComponent(S.branch));
+  S.products = d.products;
+  S.categories = d.categories;
+  S.byId = new Map(d.products.map(p => [p.id, p]));
+  // Savatdagi tovar o'chirilgan bo'lsa — olib tashlanadi.
+  S.cart = S.cart.filter(l => S.byId.has(l.id));
+  renderResults();
+  if (S.tab === "stock") renderStock();
+}
+
+function norm(s) { return String(s || "").toLowerCase().replace(/[ʻʼ‘’`']/g, "'"); }
+
+function search(q, limit = 60) {
+  q = norm(q).trim();
+  if (!q) return S.products.slice(0, limit);
+  const words = q.split(/\s+/);
+  const exact = [], rest = [];
+  for (const p of S.products) {
+    if (p.barcode === q || p.barcode2 === q || norm(p.sku) === q) { exact.push(p); continue; }
+    const hay = norm(p.name + " " + p.short_name + " " + p.sku + " " + p.barcode);
+    if (words.every(w => hay.includes(w))) rest.push(p);
+    if (exact.length + rest.length >= limit * 3) break;
+  }
+  return exact.concat(rest).slice(0, limit);
+}
+
+let selIdx = 0;
+function renderResults() {
+  const list = search($("#q").value);
+  selIdx = Math.min(selIdx, Math.max(list.length - 1, 0));
+  $("#results").innerHTML = list.map((p, i) => `
+    <div class="card prod ${i === selIdx ? "sel" : ""}" data-id="${esc(p.id)}">
+      ${p.image ? `<img loading="lazy" src="/api/kassa/image/${encodeURIComponent(p.image)}" alt="" onerror="this.remove()">` : ""}
+      <div class="nm">${esc(p.name)}</div>
+      <div class="row"><span class="price">${money(p.sale_price)}</span>
+        <span class="${p.qty <= 0 ? "bad" : p.min_stock > 0 && p.qty <= p.min_stock ? "warn" : "muted"}">${qtyFmt(p.qty)} ${esc(p.unit)}</span></div>
+      ${p.barcode ? `<div class="muted" style="font-size:12px">${esc(p.barcode)}</div>` : ""}
+    </div>`).join("") || `<div class="empty">Tovar topilmadi</div>`;
+  S.lastResults = list;
+}
+
+$("#results").addEventListener("click", e => {
+  const el = e.target.closest(".prod");
+  if (el) { addToCart(el.dataset.id); $("#q").select(); }
+});
+
+$("#q").addEventListener("input", () => { selIdx = 0; renderResults(); });
+$("#q").addEventListener("keydown", e => {
+  const list = S.lastResults || [];
+  if (e.key === "Enter") {
+    e.preventDefault();
+    const q = $("#q").value.trim();
+    if (!q) return;
+    const hit = S.products.find(p => p.barcode === q || p.barcode2 === q) || list[selIdx];
+    if (hit) { addToCart(hit.id); $("#q").value = ""; selIdx = 0; renderResults(); }
+    else beep();
+  } else if (e.key === "ArrowDown" || e.key === "ArrowRight") { if (list.length) { selIdx = Math.min(selIdx + 1, list.length - 1); renderResults(); e.preventDefault(); } }
+  else if (e.key === "ArrowUp" || e.key === "ArrowLeft") { selIdx = Math.max(selIdx - 1, 0); renderResults(); e.preventDefault(); }
+});
+
+function beep() {
+  try { const a = new AudioContext(), o = a.createOscillator(); o.frequency.value = 330; o.connect(a.destination); o.start(); o.stop(a.currentTime + 0.18); } catch {}
+}
+
+// ---------------------------------------------------------------- Savat
+function saveCart() { store.set("kassa.cart." + S.branch, S.cart); }
+
+function addToCart(id, qty = 1) {
+  const p = S.byId.get(id);
+  if (!p) return;
+  const line = S.cart.find(l => l.id === id);
+  if (line) line.qty = Math.round((line.qty + qty) * 1000) / 1000;
+  else S.cart.push({id, qty});
+  saveCart();
+  renderCart();
+  if (p.is_weighted && !line) setTimeout(() => { const i = $(`#cart [data-q="${CSS.escape(id)}"]`); i && (i.focus(), i.select()); }, 0);
+}
+
+function totals() {
+  let subtotal = 0;
+  for (const l of S.cart) { const p = S.byId.get(l.id); if (p) subtotal += Math.round(l.qty * p.sale_price); }
+  const type = $("#discType").value, val = parseFloat($("#discVal").value) || 0;
+  let disc = 0;
+  if (subtotal > 0 && type === "percent") disc = Math.min(Math.max(Math.round(subtotal * val / 100), 0), subtotal);
+  if (subtotal > 0 && type === "amount") disc = Math.min(Math.max(Math.round(val), 0), subtotal);
+  return {subtotal, disc, total: subtotal - disc};
+}
+
+function renderCart() {
+  $("#cart").innerHTML = S.cart.map(l => {
+    const p = S.byId.get(l.id);
+    return `<div class="line">
+      <div><div class="nm">${esc(p.name)}</div><div class="muted" style="font-size:13px">${money(p.sale_price)} × ${qtyFmt(l.qty)} ${esc(p.unit)}</div></div>
+      <div class="n" style="font-weight:700">${money(Math.round(l.qty * p.sale_price))}</div>
+      <div class="ctl">
+        <button class="btn" data-dec="${esc(l.id)}">−</button>
+        <input data-q="${esc(l.id)}" value="${qtyFmt(l.qty)}" inputmode="decimal">
+        <button class="btn" data-inc="${esc(l.id)}">+</button>
+      </div>
+      <div class="n"><button class="btn danger" data-del="${esc(l.id)}" title="O'chirish">✕</button></div>
+    </div>`;
+  }).join("") || `<div class="empty">Savat bo'sh.<br>Tovarni skanerlang yoki qidiring.</div>`;
+  const t = totals();
+  $("#subtotal").textContent = money(t.subtotal);
+  $("#discShow").textContent = t.disc ? "−" + money(t.disc) + " so'm" : "";
+  $("#total").textContent = money(t.total);
+  $$("[data-pay]").forEach(b => b.disabled = !S.cart.length);
+}
+
+$("#cart").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  const id = b.dataset.inc || b.dataset.dec || b.dataset.del;
+  const line = S.cart.find(l => l.id === id);
+  if (!line) return;
+  if (b.dataset.inc) line.qty = Math.round((line.qty + 1) * 1000) / 1000;
+  if (b.dataset.dec) line.qty = Math.round((line.qty - 1) * 1000) / 1000;
+  if (b.dataset.del || line.qty <= 0) S.cart = S.cart.filter(l => l !== line);
+  saveCart(); renderCart();
+});
+$("#cart").addEventListener("change", e => {
+  const id = e.target.dataset.q;
+  if (!id) return;
+  const v = parseFloat(String(e.target.value).replace(",", "."));
+  const line = S.cart.find(l => l.id === id);
+  if (!line) return;
+  if (v > 0) line.qty = Math.round(v * 1000) / 1000; else S.cart = S.cart.filter(l => l !== line);
+  saveCart(); renderCart(); $("#q").focus();
+});
+$("#discType").onchange = () => { $("#discVal").disabled = $("#discType").value === "none"; if ($("#discVal").disabled) $("#discVal").value = ""; renderCart(); };
+$("#discVal").oninput = renderCart;
+$("#clearCart").onclick = () => { if (S.cart.length && confirm("Savat tozalansinmi?")) { S.cart = []; saveCart(); resetDiscount(); renderCart(); } };
+function resetDiscount() { $("#discType").value = "none"; $("#discVal").value = ""; $("#discVal").disabled = true; }
+$("#autoPrint").checked = store.get("kassa.autoPrint", false);
+$("#autoPrint").onchange = e => store.set("kassa.autoPrint", e.target.checked);
+
+// ---------------------------------------------------------------- Oyna
+function dialog(title, body, buttons) {
+  $("#dlgTitle").textContent = title;
+  $("#dlgBody").innerHTML = body;
+  $("#dlgErr").textContent = "";
+  const ft = $("#dlgFt");
+  ft.innerHTML = "";
+  for (const b of buttons) {
+    const el = document.createElement("button");
+    el.type = b.submit ? "submit" : "button";
+    el.className = "btn " + (b.cls || "");
+    el.textContent = b.label;
+    if (b.submit) el.value = "ok";
+    el.onclick = b.submit ? null : (() => b.onClick ? b.onClick() : close());
+    ft.appendChild(el);
+  }
+  const submit = buttons.find(b => b.submit);
+  $("#dlgForm").onsubmit = async e => {
+    if (!submit) return;
+    e.preventDefault();
+    const btn = ft.querySelector('[type="submit"]');
+    btn.disabled = true;
+    $("#dlgErr").textContent = "";
+    try { await submit.onClick(); } catch (err) { $("#dlgErr").textContent = err.message; } finally { btn.disabled = false; }
+  };
+  $("#dlg").showModal();
+  const first = $("#dlgBody [autofocus]") || $("#dlgBody input");
+  if (first) { first.focus(); first.select?.(); }
+  function close() { $("#dlg").close(); }
+}
+const closeDlg = () => $("#dlg").close();
+$("#dlg").addEventListener("close", () => { if (S.tab === "sell") $("#q").focus(); });
+
+// ---------------------------------------------------------------- To'lov
+function custOptions(selected = "") {
+  return `<option value="">— mijozni tanlang —</option>` + S.customers.map(c =>
+    `<option value="${esc(c.id)}" ${c.id === selected ? "selected" : ""}>${esc(c.name)}${c.phone ? " · " + esc(c.phone) : ""}${c.debt ? " (qarz " + money(c.debt) + ")" : ""}</option>`).join("");
+}
+
+async function pay(kind) {
+  if (!S.cart.length) return;
+  const t = totals();
+  if (kind === "debt") S.customers = (await api("/api/kassa/customers?branch_id=" + encodeURIComponent(S.branch))).customers;
+  const cash = kind === "cash" ? t.total : 0;
+  const card = kind === "card" ? t.total : 0;
+  dialog("To'lov: " + money(t.total) + " so'm", `
+    <div class="f2">
+      <label>Naqd<input id="pCash" type="number" min="0" value="${cash || ""}" ${kind === "cash" ? "autofocus" : ""}></label>
+      <label>Karta<input id="pCard" type="number" min="0" value="${card || ""}"></label>
+      <label>O'tkazma<input id="pTr" type="number" min="0"></label>
+      <label>Nasiya (qarzga)<input id="pDebt" type="number" min="0" value="${kind === "debt" ? t.total : ""}"></label>
+    </div>
+    <div id="custBox" class="${kind === "debt" ? "" : "hidden"}" style="display:grid;gap:6px">
+      <label>Mijoz<select id="pCust">${custOptions()}</select></label>
+      <button type="button" class="btn" id="pNewCust">+ Yangi mijoz</button>
+    </div>
+    <div class="row" style="display:flex;justify-content:space-between;align-items:center">
+      <span class="muted">Qaytim</span><span class="change n" id="pChange">0</span>
+    </div>
+    <div class="muted" style="font-size:13px">Enter — to'lash</div>`,
+    [{label: "Bekor", onClick: closeDlg}, {label: "To'lash", cls: "primary big", submit: true, onClick: () => checkout(t)}]);
+  const recalc = () => {
+    const v = id => parseInt($(id).value) || 0;
+    const covered = v("#pCash") + v("#pCard") + v("#pTr") + v("#pDebt");
+    const ch = covered - t.total;
+    $("#pChange").textContent = ch >= 0 ? money(ch) : "yetmaydi " + money(-ch);
+    $("#pChange").className = "change n " + (ch < 0 ? "bad" : "ok");
+    $("#custBox").classList.toggle("hidden", !(v("#pDebt") > 0));
+  };
+  $$("#dlgBody input").forEach(i => i.addEventListener("input", recalc));
+  recalc();
+  $("#pNewCust").onclick = async () => {
+    const name = prompt("Mijoz ismi:");
+    if (!name || !name.trim()) return;
+    const phone = prompt("Telefon (ixtiyoriy):") || "";
+    try {
+      const c = await api("/api/kassa/customers", {body: {branch_id: S.branch, name, phone}});
+      S.customers.unshift(c);
+      $("#pCust").innerHTML = custOptions(c.id);
+    } catch (err) { $("#dlgErr").textContent = err.message; }
+  };
+}
+
+async function checkout(t) {
+  const v = id => parseInt($(id).value) || 0;
+  const body = {
+    branch_id: S.branch,
+    lines: S.cart.map(l => ({product_id: l.id, qty: l.qty})),
+    discount_type: $("#discType").value,
+    discount_value: parseFloat($("#discVal").value) || 0,
+    paid_cash: v("#pCash"), paid_card: v("#pCard"), paid_transfer: v("#pTr"), debt: v("#pDebt"),
+    customer_id: v("#pDebt") > 0 ? $("#pCust").value : "",
+  };
+  const sale = await api("/api/kassa/sale", {body});
+  S.cart = []; saveCart(); resetDiscount(); renderCart();
+  closeDlg();
+  showReceipt(sale, true);
+  loadProducts().catch(() => {});
+}
+
+$$("[data-pay]").forEach(b => b.onclick = () => pay(b.dataset.pay).catch(err => alert(err.message)));
+
+document.addEventListener("keydown", e => {
+  if ($("#dlg").open || S.tab !== "sell" || $("#app").classList.contains("hidden")) return;
+  const k = {F2: "cash", F3: "card", F4: "debt"}[e.key];
+  if (k) { e.preventDefault(); pay(k).catch(err => alert(err.message)); }
+  else if (e.key.length === 1 && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "SELECT") $("#q").focus();
+});
+
+// ---------------------------------------------------------------- Chek
+function branchName(id) { return S.me.branches.find(b => b.id === id)?.name || ""; }
+
+function receiptHtml(s) {
+  const d = new Date(s.created_at);
+  const r = (a, b, cls = "") => `<div class="r ${cls}"><span>${a}</span><span>${b}</span></div>`;
+  return `<div class="rc">
+    <div class="c b" style="font-size:14px">${esc(branchName(s.branch_id) || "Do'kon")}</div>
+    <div class="c">Chek ${esc(s.receipt_no)}</div>
+    <div class="c">${d.toLocaleDateString("ru-RU")} ${d.toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"})}</div>
+    <div>Kassir: ${esc(s.cashier)}</div>
+    ${s.status === "refunded" ? `<div class="c b">*** QAYTARILGAN ***</div>` : ""}
+    <hr>
+    ${s.items.map(i => `<div>${esc(i.name)}</div>${r(`${qtyFmt(i.qty)} ${esc(i.unit)} × ${money(i.price)}`, money(i.qty * i.price))}`).join("")}
+    <hr>
+    ${s.discount ? r("Jami", money(s.subtotal)) + r("Chegirma", "−" + money(s.discount)) : ""}
+    ${r("JAMI", money(s.total), "b")}
+    ${s.paid_cash ? r("Naqd", money(s.paid_cash)) : ""}
+    ${s.paid_card ? r("Karta", money(s.paid_card)) : ""}
+    ${s.paid_transfer ? r("O'tkazma", money(s.paid_transfer)) : ""}
+    ${s.debt ? r("Nasiya", money(s.debt)) + `<div>Mijoz: ${esc(s.customer)}</div>` : ""}
+    ${s.change ? r("Qaytim", money(s.change)) : ""}
+    <hr><div class="c">Xaridingiz uchun rahmat!</div>
+  </div>`;
+}
+
+function printReceipt(s) {
+  $("#receipt").innerHTML = receiptHtml(s);
+  window.print();
+}
+
+function showReceipt(s, fresh = false) {
+  const btns = [{label: "Yopish", onClick: closeDlg}, {label: "Chop etish", cls: "primary", onClick: () => printReceipt(s)}];
+  if (!fresh && S.role === "admin" && s.status !== "refunded") btns.unshift({label: "Qaytarish", cls: "danger", onClick: () => refund(s)});
+  dialog(fresh ? "Sotildi ✓" : "Chek " + s.receipt_no, `
+    ${fresh && s.change ? `<div class="row" style="display:flex;justify-content:space-between"><span>Qaytim</span><span class="change ok">${money(s.change)} so'm</span></div>` : ""}
+    <div class="preview">${receiptHtml(s)}</div>`, btns);
+  if (fresh && $("#autoPrint").checked) setTimeout(() => printReceipt(s), 50);
+}
+
+async function refund(s) {
+  const reason = prompt("Qaytarish sababi (ixtiyoriy):", "");
+  if (reason === null) return;
+  try {
+    await api("/api/kassa/refund", {body: {sale_id: s.id, reason}});
+    closeDlg();
+    await Promise.all([loadSales(), loadProducts()]);
+  } catch (err) { $("#dlgErr").textContent = err.message; }
+}
+
+// ---------------------------------------------------------------- Cheklar
+const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+$("#salesDate").value = today();
+$("#salesDate").onchange = () => loadSales();
+
+async function loadSales() {
+  const d = await api(`/api/kassa/sales?branch_id=${encodeURIComponent(S.branch)}&date=${$("#salesDate").value || today()}`);
+  S.sales = d.sales;
+  const ok = d.sales.filter(s => s.status === "completed");
+  $("#salesSum").textContent = `${ok.length} ta chek · ${money(ok.reduce((a, s) => a + s.total, 0))} so'm`;
+  $("#salesRows").innerHTML = d.sales.map((s, i) => `<tr class="click" data-i="${i}">
+    <td>${new Date(s.created_at).toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"})}</td>
+    <td style="white-space:nowrap">${esc(s.receipt_no)}</td><td>${esc(s.cashier)}</td><td>${PAY[s.payment] || esc(s.payment)}</td>
+    <td class="n">${money(s.total)}</td>
+    <td>${s.status === "refunded" ? `<span class="tag bad">qaytarilgan</span>` : ""}</td></tr>`).join("")
+    || `<tr><td colspan="6" class="empty">Bu kunda chek yo'q</td></tr>`;
+}
+$("#salesRows").addEventListener("click", e => { const tr = e.target.closest("tr[data-i]"); if (tr) showReceipt(S.sales[+tr.dataset.i]); });
+
+// ---------------------------------------------------------------- Ombor
+function renderStock() {
+  const q = $("#sq").value, low = $("#lowOnly").checked;
+  const list = (q ? search(q, 500) : S.products).filter(p => !low || p.qty <= p.min_stock).slice(0, 500);
+  $("#stockRows").innerHTML = list.map(p => `<tr>
+    <td><b>${esc(p.name)}</b>${p.sku ? ` <span class="muted">${esc(p.sku)}</span>` : ""}</td>
+    <td class="muted">${esc(p.barcode)}</td>
+    <td class="n">${money(p.purchase_price)}</td><td class="n">${money(p.sale_price)}</td>
+    <td class="n ${p.qty <= 0 ? "bad" : p.min_stock > 0 && p.qty <= p.min_stock ? "warn" : ""}">${qtyFmt(p.qty)} ${esc(p.unit)}</td>
+    <td class="n"><button class="btn" data-in="${esc(p.id)}">Kirim</button> <button class="btn" data-edit="${esc(p.id)}">Tahrirlash</button></td>
+  </tr>`).join("") || `<tr><td colspan="6" class="empty">Tovar yo'q</td></tr>`;
+}
+$("#sq").oninput = renderStock;
+$("#lowOnly").onchange = renderStock;
+$("#stockRows").addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (b?.dataset.in) stockIn(S.byId.get(b.dataset.in));
+  if (b?.dataset.edit) editProduct(S.byId.get(b.dataset.edit));
+});
+$("#newProduct").onclick = () => editProduct(null);
+
+function stockIn(p) {
+  dialog("Kirim: " + p.name, `
+    <div class="f2">
+      <label>Miqdor (${esc(p.unit)})<input id="iQty" type="number" min="0" step="any" required autofocus></label>
+      <label>Kirim narxi<input id="iCost" type="number" min="0" value="${p.purchase_price || ""}"></label>
+    </div>
+    <label>Izoh<input id="iNote" placeholder="masalan, nakladnoy raqami"></label>
+    <div class="muted">Hozirgi qoldiq: ${qtyFmt(p.qty)} ${esc(p.unit)}</div>`,
+    [{label: "Bekor", onClick: closeDlg}, {label: "Saqlash", cls: "primary", submit: true, onClick: async () => {
+      const qty = parseFloat($("#iQty").value);
+      if (!(qty > 0)) throw new Error("Miqdorni kiriting");
+      await api("/api/kassa/stock_in", {body: {branch_id: S.branch, note: $("#iNote").value,
+        lines: [{product_id: p.id, qty, unit_cost: parseInt($("#iCost").value) || 0}]}});
+      closeDlg();
+      await loadProducts();
+    }}]);
+}
+
+function editProduct(p) {
+  const v = (k, d = "") => esc(p ? p[k] : d);
+  dialog(p ? "Tovarni tahrirlash" : "Yangi tovar", `
+    <label>Nomi<input id="eName" value="${v("name")}" required autofocus></label>
+    <div class="f2">
+      <label>Shtrix-kod<input id="eBar" value="${v("barcode")}" placeholder="skanerlang"></label>
+      <label>Artikul<input id="eSku" value="${v("sku")}"></label>
+      <label>Kirim narxi<input id="eBuy" type="number" min="0" value="${v("purchase_price", "")}"></label>
+      <label>Sotuv narxi<input id="eSell" type="number" min="0" value="${v("sale_price", "")}" required></label>
+      <label>Birlik<input id="eUnit" value="${v("unit", "dona")}" list="units"></label>
+      <label>Min. qoldiq<input id="eMin" type="number" min="0" step="any" value="${v("min_stock", "")}"></label>
+    </div>
+    <label>Kategoriya<select id="eCat"><option value="">—</option>${S.categories.map(c =>
+      `<option value="${esc(c.id)}" ${p && p.category_id === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></label>
+    <label style="display:flex;gap:8px;align-items:center;color:var(--text)"><input type="checkbox" id="eW" ${p && p.is_weighted ? "checked" : ""}> Tarozida tortiladi (kg)</label>
+    <datalist id="units"><option>dona</option><option>kg</option><option>m</option><option>litr</option><option>pachka</option><option>rulon</option><option>juft</option></datalist>`,
+    [{label: "Bekor", onClick: closeDlg}, {label: "Saqlash", cls: "primary", submit: true, onClick: async () => {
+      await api("/api/kassa/product", {body: {
+        branch_id: S.branch, id: p ? p.id : null, name: $("#eName").value, barcode: $("#eBar").value, sku: $("#eSku").value,
+        unit: $("#eUnit").value, category_id: $("#eCat").value || null, is_weighted: $("#eW").checked,
+        sale_price: parseInt($("#eSell").value) || 0, purchase_price: parseInt($("#eBuy").value) || 0,
+        min_stock: parseFloat($("#eMin").value) || 0,
+      }});
+      closeDlg();
+      await loadProducts();
+    }}]);
+  // Skaner Enter bosadi — formani yuborib yubormasin.
+  $("#eBar").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("#eSku").focus(); } });
+}
+
+// ---------------------------------------------------------------- Mijozlar
+async function loadCustomers() {
+  S.customers = (await api("/api/kassa/customers?branch_id=" + encodeURIComponent(S.branch))).customers;
+  renderCustomers();
+}
+function renderCustomers() {
+  const q = norm($("#cq").value).trim();
+  const list = S.customers.filter(c => !q || norm(c.name + " " + c.phone).includes(q));
+  $("#custRows").innerHTML = list.map(c => `<tr>
+    <td><b>${esc(c.name)}</b></td><td class="muted">${esc(c.phone)}</td>
+    <td class="n ${c.debt > 0 ? "bad" : ""}">${money(c.debt)}</td>
+    <td class="n">${c.debt > 0 ? `<button class="btn" data-pay-debt="${esc(c.id)}">To'lov qabul qilish</button>` : ""}</td></tr>`).join("")
+    || `<tr><td colspan="4" class="empty">Mijoz yo'q</td></tr>`;
+}
+$("#cq").oninput = renderCustomers;
+$("#custRows").addEventListener("click", e => {
+  const id = e.target.closest("button")?.dataset.payDebt;
+  if (!id) return;
+  const c = S.customers.find(x => x.id === id);
+  dialog("To'lov: " + c.name, `
+    <div class="muted">Qarz: <b class="bad">${money(c.debt)} so'm</b></div>
+    <div class="f2">
+      <label>Summa<input id="dAmt" type="number" min="1" value="${c.debt}" required autofocus></label>
+      <label>Turi<select id="dM"><option value="cash">Naqd</option><option value="card">Karta</option><option value="transfer">O'tkazma</option></select></label>
+    </div>
+    <label>Izoh<input id="dNote"></label>`,
+    [{label: "Bekor", onClick: closeDlg}, {label: "Qabul qilish", cls: "primary", submit: true, onClick: async () => {
+      await api("/api/kassa/customer_payment", {body: {branch_id: S.branch, customer_id: id,
+        amount: parseInt($("#dAmt").value) || 0, method: $("#dM").value, note: $("#dNote").value}});
+      closeDlg();
+      await loadCustomers();
+    }}]);
+});
+$("#newCustomer").onclick = () => dialog("Yangi mijoz", `
+    <label>Ismi<input id="nName" required autofocus></label>
+    <label>Telefon<input id="nPhone" inputmode="tel"></label>`,
+  [{label: "Bekor", onClick: closeDlg}, {label: "Saqlash", cls: "primary", submit: true, onClick: async () => {
+    await api("/api/kassa/customers", {body: {branch_id: S.branch, name: $("#nName").value, phone: $("#nPhone").value}});
+    closeDlg();
+    await loadCustomers();
+  }}]);
+
+// ---------------------------------------------------------------- Bo'limlar
+function showTab(tab) {
+  S.tab = tab;
+  $$("#tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  for (const id of ["sell", "sales", "stock", "customers"]) $("#" + id).classList.toggle("hidden", id !== tab);
+  if (tab === "sell") $("#q").focus();
+  if (tab === "sales") loadSales().catch(err => alert(err.message));
+  if (tab === "stock") renderStock();
+  if (tab === "customers") loadCustomers().catch(err => alert(err.message));
+}
+$("#tabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) showTab(b.dataset.tab); });
+
+// Boshqa kassalar (ilova yoki web) sotgani — qoldiq har daqiqada yangilanadi.
+setInterval(() => { if (S.me && !$("#dlg").open && document.visibilityState === "visible") loadProducts().catch(() => {}); }, 60000);
+
+start().catch(() => showLogin());
+</script>
+</body>
+</html>

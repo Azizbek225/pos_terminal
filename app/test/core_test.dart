@@ -41,6 +41,11 @@ void main() {
       expect(PasswordHasher.verify('sir123', salt, h), isTrue);
       expect(PasswordHasher.verify('sir124', salt, h), isFalse);
     });
+
+    test('server (web panel) bilan bir xil hash', () {
+      // server/tests/test_web.py dagi qiymat: Python hashlib.pbkdf2_hmac.
+      expect(PasswordHasher.hash('admin123', 'c2FsdC1zYWx0'), 'WsSn7hSEnQkDNa6kbkYPPMlODSkg_W8tojHw5dLlxiI=');
+    });
   });
 
   group('Savat', () {

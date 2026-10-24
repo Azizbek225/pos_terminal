@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POS hisobot paneli</title>
+<style>
+  :root {
+    --bg: #f4f6f8; --card: #fff; --text: #1d2329; --muted: #6b7682; --line: #e3e7eb;
+    --accent: #1565c0; --accent-soft: #e3eefb; --ok: #2e7d32; --bad: #c62828; --warn: #ef6c00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161a; --card: #1b2127; --text: #e8ecef; --muted: #9aa5b1; --line: #2c343c;
+      --accent: #64a8f0; --accent-soft: #1e3044; --ok: #66bb6a; --bad: #ef5350; --warn: #ffa726;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  header { position: sticky; top: 0; z-index: 5; background: var(--card); border-bottom: 1px solid var(--line); }
+  .bar { max-width: 1200px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .brand { font-weight: 700; font-size: 17px; margin-right: auto; }
+  nav { max-width: 1200px; margin: 0 auto; padding: 0 16px; display: flex; gap: 4px; overflow-x: auto; }
+  nav button { border: 0; background: none; color: var(--muted); padding: 10px 12px; font: inherit; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; }
+  nav button.on { color: var(--accent); border-color: var(--accent); font-weight: 600; }
+  main { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  input, select, button.btn, a.btn { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+  button.btn, a.btn { cursor: pointer; text-decoration: none; }
+  button.btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.chip { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 16px; padding: 5px 12px; cursor: pointer; }
+  button.chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .card h3 { margin: 0 0 10px; font-size: 15px; }
+  .kpi .label { color: var(--muted); font-size: 13px; }
+  .kpi .value { font-size: 22px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .kpi .sub { color: var(--muted); font-size: 12px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  @media (max-width: 800px) { .two { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  td.n, th.n { text-align: right; white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+  .muted { color: var(--muted); }
+  .bad { color: var(--bad); } .ok { color: var(--ok); } .warn { color: var(--warn); }
+  .tag { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+  .tag.bad { background: transparent; border: 1px solid var(--bad); }
+  .chart { display: flex; align-items: flex-end; gap: 4px; height: 160px; padding-top: 8px; }
+  .chart .col { flex: 1; min-width: 6px; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; }
+  .chart .b { width: 100%; background: var(--accent); border-radius: 4px 4px 0 0; min-height: 2px; }
+  .chart .d { font-size: 11px; color: var(--muted); margin-top: 4px; white-space: nowrap; }
+  .hbar { height: 6px; background: var(--accent-soft); border-radius: 3px; margin-top: 3px; }
+  .hbar > div { height: 100%; background: var(--accent); border-radius: 3px; }
+  details summary { cursor: pointer; white-space: nowrap; }
+  .items { margin: 6px 0 2px 0; font-size: 13px; color: var(--muted); }
+  #login { max-width: 340px; margin: 12vh auto; }
+  #login .card { padding: 22px; }
+  #login input { width: 100%; margin-bottom: 10px; }
+  #login button { width: 100%; }
+  .err { color: var(--bad); min-height: 20px; font-size: 14px; }
+  .hidden { display: none !important; }
+  @media (max-width: 600px) { #who { display: none; } .brand { font-size: 16px; } }
+  .empty { padding: 24px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div id="login" class="hidden">
+  <div class="card">
+    <h2 style="margin-top:0">POS hisobot paneli</h2>
+    <form id="loginForm">
+      <input id="u" placeholder="Login" autocomplete="username" required>
+      <input id="p" type="password" placeholder="Parol" autocomplete="current-password" required>
+      <div class="err" id="loginErr"></div>
+      <button class="btn primary" type="submit">Kirish</button>
+    </form>
+    <p class="muted" style="font-size:13px;margin-bottom:0">Ilovadagi admin login va paroli bilan kiring.</p>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <div class="bar">
+      <div class="brand">POS hisobot</div>
+      <select id="branch"></select>
+      <a class="btn" href="/kassa" title="Brauzerda savdo qilish">Kassa</a>
+      <a class="btn hidden" id="connectLink" href="/ulash" target="_blank" title="Telefon yoki kompyuterni QR kod bilan ulash">Qurilma ulash</a>
+      <span class="muted" id="who"></span>
+      <button class="btn" id="logout">Chiqish</button>
+    </div>
+    <nav id="tabs">
+      <button data-t="overview" class="on">Savdo</button>
+      <button data-t="sales">Cheklar</button>
+      <button data-t="stock">Qoldiq</button>
+      <button data-t="debts">Qarzlar</button>
+      <button data-t="activity">O'zgarishlar</button>
+    </nav>
+  </header>
+  <main>
+    <div class="filters" id="dates">
+      <span id="dateGroup" style="display:contents">
+      <button class="chip on" data-p="today">Bugun</button>
+      <button class="chip" data-p="yesterday">Kecha</button>
+      <button class="chip" data-p="week">7 kun</button>
+      <button class="chip" data-p="month">Shu oy</button>
+      <input type="date" id="from"> — <input type="date" id="to">
+      </span>
+      <button class="btn" id="refresh" title="Yangilash">↻</button>
+      <span class="muted" id="updated" style="font-size:13px"></span>
+    </div>
+    <div id="view"></div>
+  </main>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const state = { tab: 'overview', branches: [], branch: '' };
+const money = (n) => (Math.round(n || 0)).toLocaleString('ru-RU').replace(/,/g, ' ') + " so'm";
+const num = (n) => (Math.round((n || 0) * 1000) / 1000).toLocaleString('ru-RU');
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const dt = (ms) => ms ? new Date(ms).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const branchName = (id) => (state.branches.find((b) => b.id === id) || {}).name || '';
+const PAY = { cash: 'Naqd', card: 'Karta', transfer: "O'tkazma", mixed: 'Aralash', debt: 'Nasiya' };
+const ACTIONS = {
+  login: 'Tizimga kirish', discount_approved: 'Chegirma tasdiqlandi', refund: 'Chek qaytarildi',
+  product_created: "Yangi tovar qo'shildi", product_updated: "Tovar o'zgartirildi", price_changed: "Narx o'zgardi",
+  product_deleted: "Tovar o'chirildi", category_saved: 'Kategoriya saqlandi', category_deleted: "Kategoriya o'chirildi",
+  user_created: "Xodim qo'shildi", user_updated: "Xodim o'zgartirildi", user_deleted: "Xodim o'chirildi",
+  branch_saved: 'Filial saqlandi', branch_deleted: "Filial o'chirildi", supplier_purchase: 'Firmadan kirim',
+  supplier_payment: "Firmaga to'lov", customer_saved: "Mijoz qo'shildi", customer_payment: "Mijoz qarzini to'ladi",
+  customer_debt: 'Mijozga qarz yozildi',
+};
+
+async function api(path, opts) {
+  const r = await fetch(path, { credentials: 'same-origin', ...opts });
+  if (r.status === 401) { showLogin(); throw new Error('auth'); }
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.detail || r.statusText);
+  return body;
+}
+
+function showLogin() { $('#app').classList.add('hidden'); $('#login').classList.remove('hidden'); }
+
+$('#loginForm').onsubmit = async (e) => {
+  e.preventDefault();
+  $('#loginErr').textContent = '';
+  const r = await fetch('/api/web/login', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+    body: JSON.stringify({ username: $('#u').value, password: $('#p').value }),
+  });
+  if (!r.ok) { $('#loginErr').textContent = (await r.json().catch(() => ({}))).detail || 'Xato'; return; }
+  start();
+};
+$('#logout').onclick = async () => { await fetch('/api/web/logout', { method: 'POST' }); showLogin(); };
+
+function setPreset(p) {
+  const t = new Date(); let f = new Date(t), to = new Date(t);
+  if (p === 'yesterday') { f.setDate(t.getDate() - 1); to = new Date(f); }
+  if (p === 'week') f.setDate(t.getDate() - 6);
+  if (p === 'month') f = new Date(t.getFullYear(), t.getMonth(), 1);
+  $('#from').value = iso(f); $('#to').value = iso(to);
+  document.querySelectorAll('#dates .chip').forEach((c) => c.classList.toggle('on', c.dataset.p === p));
+}
+document.querySelectorAll('#dates .chip').forEach((c) => c.onclick = () => { setPreset(c.dataset.p); load(); });
+['#from', '#to'].forEach((s) => $(s).onchange = () => { document.querySelectorAll('#dates .chip').forEach((c) => c.classList.remove('on')); load(); });
+$('#refresh').onclick = () => load();
+$('#branch').onchange = () => { state.branch = $('#branch').value; load(); };
+document.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => {
+  state.tab = b.dataset.t;
+  document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x === b));
+  load();
+});
+
+function qs(withDates = true) {
+  const p = new URLSearchParams();
+  if (withDates) { p.set('date_from', $('#from').value); p.set('date_to', $('#to').value); }
+  if (state.branch) p.set('branch_id', state.branch);
+  return p.toString();
+}
+
+const kpi = (label, value, sub = '', cls = '') =>
+  `<div class="card kpi"><div class="label">${label}</div><div class="value ${cls}">${value}</div>${sub ? `<div class="sub">${sub}</div>` : ''}</div>`;
+const empty = (t = "Ma'lumot yo'q") => `<div class="empty">${t}</div>`;
+
+const views = {
+  async overview() {
+    const d = await api('/api/web/overview?' + qs());
+    const max = Math.max(1, ...d.days.map((x) => x.total));
+    const chart = d.days.length > 1 ? `<div class="card" style="margin-bottom:14px"><h3>Kunlar bo'yicha</h3><div class="chart">${d.days.map((x) =>
+      `<div class="col" title="${x.date}: ${money(x.total)} (${x.count} chek)"><div class="b" style="height:${(x.total / max) * 100}%"></div><div class="d">${x.date.slice(8)}.${x.date.slice(5, 7)}</div></div>`).join('')}</div></div>` : '';
+    const payTotal = Object.values(d.payments).reduce((a, b) => a + b, 0) || 1;
+    const cmax = Math.max(1, ...d.cashiers.map((c) => c.total));
+    const branchRows = state.branches.length > 1 && !state.branch
+      ? `<div class="card" style="margin-bottom:14px"><h3>Filiallar</h3><table>${state.branches.map((b) =>
+        `<tr><td>${esc(b.name)}</td><td class="n">${money(d.by_branch[b.id] || 0)}</td></tr>`).join('')}</table></div>` : '';
+    return `<div class="grid">
+        ${kpi('Savdo', money(d.total), `${d.count} ta chek`)}
+        ${kpi("O'rtacha chek", money(d.average))}
+        ${kpi('Foyda (taxminiy)', money(d.profit), 'savdo − tannarx', d.profit < 0 ? 'bad' : 'ok')}
+        ${kpi('Chegirma', money(d.discount))}
+        ${kpi('Qaytarilgan', money(d.refund_sum), `${d.refunds} ta chek`, d.refunds ? 'warn' : '')}
+      </div>
+      ${chart}${branchRows}
+      <div class="two">
+        <div class="card"><h3>To'lov turlari</h3><table>${Object.entries(d.payments).map(([k, v]) =>
+          `<tr><td>${PAY[k]}<div class="hbar"><div style="width:${(v / payTotal) * 100}%"></div></div></td><td class="n">${money(v)}</td></tr>`).join('')}</table></div>
+        <div class="card"><h3>Kassirlar</h3>${d.cashiers.length ? `<table>${d.cashiers.map((c) =>
+          `<tr><td>${esc(c.name)} <span class="muted">· ${c.count} chek</span><div class="hbar"><div style="width:${(c.total / cmax) * 100}%"></div></div></td><td class="n">${money(c.total)}</td></tr>`).join('')}</table>` : empty()}</div>
+      </div>
+      <div class="card"><h3>Eng ko'p sotilgan tovarlar</h3>${d.top_products.length ? `<div class="scroll"><table>
+        <tr><th>Tovar</th><th class="n">Miqdor</th><th class="n">Summa</th></tr>
+        ${d.top_products.map((p) => `<tr><td>${esc(p.name)}</td><td class="n">${num(p.qty)} ${esc(p.unit)}</td><td class="n">${money(p.total)}</td></tr>`).join('')}
+      </table></div>` : empty()}</div>`;
+  },
+
+  async sales() {
+    const d = await api('/api/web/sales?' + qs());
+    if (!d.sales.length) return `<div class="card">${empty('Bu davrda chek yo\'q')}</div>`;
+    return `<div class="card scroll"><table>
+      <tr><th>Chek</th><th>Vaqt</th><th>Kassir</th>${state.branches.length > 1 ? '<th>Filial</th>' : ''}<th>To'lov</th><th class="n">Summa</th></tr>
+      ${d.sales.map((s) => `<tr>
+        <td><details><summary>${esc(s.receipt_no)} ${s.status === 'refunded' ? '<span class="tag bad">qaytarilgan</span>' : ''}</summary>
+          <div class="items">${s.items.map((i) => `${esc(i.name)} — ${num(i.qty)} ${esc(i.unit)} × ${money(i.price)} = ${money(i.total)}`).join('<br>')}
+          ${s.discount ? `<br>Chegirma: ${money(s.discount)}` : ''}${s.customer ? `<br>Mijoz: ${esc(s.customer)}` : ''}</div></details></td>
+        <td class="muted">${dt(s.created_at)}</td><td>${esc(s.cashier)}</td>
+        ${state.branches.length > 1 ? `<td>${esc(branchName(s.branch_id))}</td>` : ''}
+        <td>${PAY[s.payment] || esc(s.payment)}${s.debt ? ` <span class="tag">nasiya ${money(s.debt)}</span>` : ''}</td>
+        <td class="n ${s.status === 'refunded' ? 'muted' : ''}">${money(s.total)}</td></tr>`).join('')}
+    </table></div>`;
+  },
+
+  async stock() {
+    state.stockData = await api('/api/web/stock?' + qs(false));
+    return stockHtml();
+  },
+
+  async debts() {
+    const d = await api('/api/web/debts?' + qs(false));
+    const sup = d.suppliers.filter((s) => s.debt !== 0 || s.purchased);
+    const cus = d.customers.filter((c) => c.debt !== 0);
+    return `<div class="grid">
+        ${kpi('Firmalarga qarzimiz', money(d.supplier_debt), '', d.supplier_debt ? 'bad' : '')}
+        ${kpi('Firmalar bizga qarz', money(d.supplier_advance))}
+        ${kpi('Mijozlar qarzi (nasiya)', money(d.customer_debt), `${cus.filter((c) => c.debt > 0).length} ta mijoz`, d.customer_debt ? 'warn' : '')}
+      </div>
+      <div class="two">
+        <div class="card scroll"><h3>Firmalar</h3>${sup.length ? `<table>
+          <tr><th>Firma</th><th class="n">Olingan</th><th class="n">To'langan</th><th class="n">Qarz</th></tr>
+          ${sup.map((s) => `<tr><td>${esc(s.name)}<div class="muted" style="font-size:12px">${esc(s.phone)}</div></td>
+            <td class="n">${money(s.purchased)}</td><td class="n">${money(s.paid)}</td>
+            <td class="n ${s.debt > 0 ? 'bad' : s.debt < 0 ? 'ok' : ''}">${s.debt < 0 ? '−' + money(-s.debt) : money(s.debt)}</td></tr>`).join('')}
+        </table>` : empty()}</div>
+        <div class="card scroll"><h3>Mijozlar (nasiya)</h3>${cus.length ? `<table>
+          <tr><th>Mijoz</th><th>Oxirgi</th><th class="n">Qarz</th></tr>
+          ${cus.map((c) => `<tr><td>${esc(c.name)}<div class="muted" style="font-size:12px">${esc(c.phone)}</div></td>
+            <td class="muted">${dt(c.last_at)}</td><td class="n ${c.debt > 0 ? 'warn' : 'ok'}">${money(c.debt)}</td></tr>`).join('')}
+        </table>` : empty('Nasiya qarzi yo\'q')}</div>
+      </div>`;
+  },
+
+  async activity() {
+    const d = await api('/api/web/activity?' + qs());
+    const ago = (ms) => {
+      if (!ms) return '—';
+      const m = Math.round((Date.now() - ms) / 60000);
+      return m < 1 ? 'hozir' : m < 60 ? `${m} daq oldin` : m < 1440 ? `${Math.round(m / 60)} soat oldin` : dt(ms);
+    };
+    const dev = d.devices.length ? `<div class="card scroll" style="margin-bottom:14px"><h3>Qurilmalar (oxirgi ulanish)</h3><table>
+      <tr><th>Qurilma</th><th>Yubordi</th><th>Oldi</th><th class="n">Yozuvlar</th></tr>
+      ${d.devices.map((x) => {
+        const last = Math.max(x.last_push_at || 0, x.last_pull_at || 0);
+        const fresh = Date.now() - last < 10 * 60000;
+        return `<tr><td><span class="${fresh ? 'ok' : 'muted'}">●</span> ${esc(x.id.slice(0, 18))}</td><td>${ago(x.last_push_at)}</td><td>${ago(x.last_pull_at)}</td><td class="n">${x.pushed_count}</td></tr>`;
+      }).join('')}</table></div>` : '';
+    return `${dev}<div class="card scroll"><h3>O'zgarishlar jurnali</h3>${d.log.length ? `<table>
+      <tr><th>Vaqt</th><th>Xodim</th><th>Amal</th><th>Tafsilot</th>${state.branches.length > 1 ? '<th>Filial</th>' : ''}</tr>
+      ${d.log.map((a) => `<tr><td class="muted" style="white-space:nowrap">${dt(a.created_at)}</td><td>${esc(a.user)}</td>
+        <td>${esc(ACTIONS[a.action] || a.action)}</td><td>${esc(a.details)}</td>
+        ${state.branches.length > 1 ? `<td class="muted">${a.branch_id ? esc(branchName(a.branch_id)) : 'umumiy'}</td>` : ''}</tr>`).join('')}
+    </table>` : empty()}</div>`;
+  },
+};
+
+function stockHtml() {
+  const d = state.stockData;
+  const multi = state.branches.length > 1 && !state.branch;
+  const q = state.q || '';
+  const show = d.products.filter((p) => (!q || (p.name + ' ' + p.barcode + ' ' + p.sku).toLowerCase().includes(q)) && (!state.lowOnly || p.low));
+  return `<div class="grid">
+      ${kpi('Tovarlar', d.products.length)}
+      ${kpi('Kam qolgan', d.low_count, 'minimal qoldiqdan past', d.low_count ? 'warn' : '')}
+      ${kpi('Ombor qiymati', money(d.stock_value), 'kirim narxida')}
+    </div>
+    <div class="filters"><input id="q" placeholder="Qidirish: nom, shtrix-kod" value="${esc(q)}" style="flex:1;min-width:200px">
+      <label><input type="checkbox" id="lowOnly" ${state.lowOnly ? 'checked' : ''}> Faqat kam qolganlar</label></div>
+    <div class="card scroll" id="stockTable">${stockTable(show, multi)}</div>`;
+}
+function stockTable(show, multi) {
+  if (!show.length) return empty();
+  return `<table>
+    <tr><th>Tovar</th><th>Kategoriya</th><th class="n">Narx</th>${multi ? state.branches.map((b) => `<th class="n">${esc(b.name)}</th>`).join('') : ''}<th class="n">Qoldiq</th></tr>
+    ${show.slice(0, 1000).map((p) => `<tr><td>${esc(p.name)}<div class="muted" style="font-size:12px">${esc(p.barcode)}</div></td>
+      <td class="muted">${esc(p.category)}</td><td class="n">${money(p.sale_price)}</td>
+      ${multi ? state.branches.map((b) => `<td class="n">${num(p.by_branch[b.id] || 0)}</td>`).join('') : ''}
+      <td class="n ${p.low ? 'warn' : p.qty < 0 ? 'bad' : ''}"><b>${num(p.qty)}</b> ${esc(p.unit)}</td></tr>`).join('')}
+  </table>`;
+}
+function bindStock() {
+  const q = $('#q');
+  if (!q) return;
+  // Qidiruv serverga qayta so'rov yubormaydi: faqat jadval qayta chiziladi.
+  const redraw = () => {
+    const d = state.stockData, s = state.q || '';
+    const show = d.products.filter((p) => (!s || (p.name + ' ' + p.barcode + ' ' + p.sku).toLowerCase().includes(s)) && (!state.lowOnly || p.low));
+    $('#stockTable').innerHTML = stockTable(show, state.branches.length > 1 && !state.branch);
+  };
+  q.oninput = () => { state.q = q.value.toLowerCase(); redraw(); };
+  $('#lowOnly').onchange = (e) => { state.lowOnly = e.target.checked; redraw(); };
+}
+
+async function load() {
+  $('#dateGroup').style.display = ['stock', 'debts'].includes(state.tab) ? 'none' : 'contents';
+  // Avtomatik yangilanishda qidiruv maydoni fokusda qolsin.
+  const focused = document.activeElement && document.activeElement.id === 'q';
+  try {
+    const html = await views[state.tab]();
+    $('#view').innerHTML = html;
+    if (state.tab === 'stock') { bindStock(); if (focused) $('#q').focus(); }
+    $('#updated').textContent = 'Yangilandi: ' + new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    if (e.message !== 'auth') $('#view').innerHTML = `<div class="card bad">Xato: ${esc(e.message)}</div>`;
+  }
+}
+
+async function start() {
+  try {
+    const me = await api('/api/web/me');
+    state.branches = me.branches;
+    $('#who').textContent = me.name;
+    $('#connectLink').classList.toggle('hidden', !me.owner);
+    $('#branch').innerHTML = (state.branches.length > 1 ? '<option value="">Barcha filiallar</option>' : '') +
+      state.branches.map((b) => `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('');
+    $('#branch').classList.toggle('hidden', state.branches.length < 2);
+    state.branch = $('#branch').value;
+    $('#login').classList.add('hidden');
+    $('#app').classList.remove('hidden');
+    load();
+  } catch (e) { /* login ko'rsatildi */ }
+}
+
+setPreset('today');
+start();
+// Har daqiqada yangilanadi (chek ochiq turgan bo'lsa — yopilib ketmasin).
+setInterval(() => {
+  if (!document.hidden && !$('#app').classList.contains('hidden') && !document.querySelector('details[open]')) load();
+}, 60000);
+</script>
+</body>
+</html>
