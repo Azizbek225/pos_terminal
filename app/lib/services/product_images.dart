@@ -17,8 +17,13 @@ class ProductImages {
 
   static String? _dir;
 
+  /// Brauzerda (web) fayl tizimi yo'q: rasmlar serverdan ko'rsatiladi va
+  /// tanlangan rasm darhol serverga yuklanadi (main.dart o'rnatadi).
+  static Future<void> Function(String name, List<int> bytes)? webUpload;
+
   /// Ilova ishga tushganda bir marta chaqiriladi (main.dart).
   static Future<void> init() async {
+    if (kIsWeb) return;
     try {
       final base = await getApplicationSupportDirectory();
       final dir = Directory(p.join(base.path, 'product_images'));
@@ -45,6 +50,17 @@ class ProductImages {
     return f.existsSync() ? f : null;
   }
 
+  /// Rasm bormi (brauzerda — nomi bo'lsa, server ko'rsatadi).
+  static bool exists(String name) => kIsWeb ? name.isNotEmpty : resolve(name) != null;
+
+  /// Ko'rsatish uchun rasm manbai; rasm yo'q bo'lsa — null.
+  static ImageProvider? provider(String name) {
+    if (name.isEmpty) return null;
+    if (kIsWeb) return NetworkImage(Uri.base.resolve('/api/kassa/image/${Uri.encodeComponent(name)}').toString());
+    final f = resolve(name);
+    return f == null ? null : FileImage(f);
+  }
+
   /// Fayl nomi uchun to'liq yo'l (fayl hali bo'lmasa ham). Papka yo'q bo'lsa — null.
   static String? pathFor(String name) {
     if (name.isEmpty || _dir == null || p.isAbsolute(name)) return null;
@@ -67,6 +83,11 @@ class ProductImages {
       );
     }
     if (picked == null) return null;
+    if (kIsWeb) {
+      var ext = p.extension(picked.name).toLowerCase();
+      if (ext.isEmpty) ext = '.jpg';
+      return _uploadWeb(await picked.readAsBytes(), ext);
+    }
     if (_dir == null) await init();
     if (_dir == null) throw Exception('Rasm papkasi mavjud emas');
     var ext = p.extension(picked.path).toLowerCase();
@@ -78,10 +99,19 @@ class ProductImages {
 
   /// Tayyor baytlarni (masalan, imzo PNG) saqlaydi. Qaytaradi: fayl nomi.
   static Future<String> saveBytes(List<int> bytes, {String ext = '.png'}) async {
+    if (kIsWeb) return _uploadWeb(bytes, ext);
     if (_dir == null) await init();
     if (_dir == null) throw Exception('Rasm papkasi mavjud emas');
     final name = '${const Uuid().v4()}$ext';
     await File(p.join(_dir!, name)).writeAsBytes(bytes, flush: true);
+    return name;
+  }
+
+  static Future<String> _uploadWeb(List<int> bytes, String ext) async {
+    final upload = webUpload;
+    if (upload == null) throw Exception('Rasm yuklash uchun server sozlanmagan');
+    final name = '${const Uuid().v4()}$ext';
+    await upload(name, bytes);
     return name;
   }
 

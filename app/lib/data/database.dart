@@ -429,6 +429,8 @@ class AppDatabase extends _$AppDatabase {
   static QueryExecutor _openConnection() => driftDatabase(
         name: 'pos_terminal',
         native: const DriftNativeOptions(databaseDirectory: getApplicationSupportDirectory),
+        // Brauzer (web): baza brauzer xotirasida (OPFS / IndexedDB).
+        web: DriftWebOptions(sqlite3Wasm: Uri.parse('sqlite3.wasm'), driftWorker: Uri.parse('drift_worker.js')),
       );
 
   @override

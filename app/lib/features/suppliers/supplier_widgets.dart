@@ -372,11 +372,11 @@ class SignatureImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final f = ProductImages.resolve(name);
-    if (f == null) return const Center(child: Icon(Icons.cloud_download_outlined, color: Colors.black38));
+    final image = ProductImages.provider(name);
+    if (image == null) return const Center(child: Icon(Icons.cloud_download_outlined, color: Colors.black38));
     return Padding(
       padding: const EdgeInsets.all(4),
-      child: Image.file(f, height: height, fit: BoxFit.contain, key: ValueKey(f.path)),
+      child: Image(image: image, height: height, fit: BoxFit.contain, key: ValueKey(name)),
     );
   }
 }
@@ -788,8 +788,8 @@ class _PhotoViewerState extends State<_PhotoViewer> {
         itemCount: widget.names.length,
         onPageChanged: (i) => setState(() => _i = i),
         itemBuilder: (_, i) {
-          final f = ProductImages.resolve(widget.names[i]);
-          if (f == null) {
+          final image = ProductImages.provider(widget.names[i]);
+          if (image == null) {
             return const Center(
               child: Padding(
                 padding: EdgeInsets.all(24),
@@ -801,7 +801,7 @@ class _PhotoViewerState extends State<_PhotoViewer> {
               ),
             );
           }
-          return InteractiveViewer(maxScale: 6, child: Center(child: Image.file(f)));
+          return InteractiveViewer(maxScale: 6, child: Center(child: Image(image: image)));
         },
       ),
     );

@@ -515,15 +515,17 @@ def connect_page(request: Request, session: SessionDep, pos_web: Annotated[str |
     page = page.replace("{{QR}}", _qr_svg(payload)).replace("{{URL}}", html.escape(urls[0]))
     page = page.replace("{{URLS}}", "<br>".join(html.escape(u) for u in urls[1:]) or "—")
     page = page.replace("{{KEY}}", html.escape(settings.api_key))
-    kassa_url = urls[0] + "/kassa"
+    kassa_url = urls[0] + "/"
     page = page.replace("{{KASSA_QR}}", _qr_svg(kassa_url)).replace("{{KASSA_URL}}", html.escape(kassa_url))
     return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/", include_in_schema=False)
 def root() -> RedirectResponse:
-    # Server manzilini yozgan har kim kassaga tushadi; admin u yerdan hisobotga o'tadi.
-    return RedirectResponse("/kassa")
+    # Server manzilini yozgan har kim ilovaga (u bo'lmasa — yengil web kassaga) tushadi.
+    from . import webapp
+
+    return RedirectResponse("/app/" if webapp.available() else "/kassa")
 
 
 @router.get("/panel", include_in_schema=False)

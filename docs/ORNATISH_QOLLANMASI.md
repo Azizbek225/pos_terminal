@@ -179,23 +179,26 @@ Docker ham, Python ham kerak emas.
 
 Telefon va kompyuter **bitta Wi-Fi**'da bo'lishi kerak.
 
-### 6.0.1. Web kassa — brauzerda savdo (eng oson)
+### 6.0.1. Dastur brauzerda (eng oson — o'rnatish va sozlash shart emas)
 
-PosServer ishlab turgan bo'lsa, ilovani o'rnatmasdan ham savdo qilish mumkin:
+PosServer ishlab turgan bo'lsa, ilovaning **o'zi** (savdo, ombor, tarix, qarzlar, monitoring,
+sozlamalar — hammasi) istalgan kompyuter yoki telefon brauzerida ochiladi:
 
-1. Istalgan kompyuter yoki telefon brauzerida `http://<server IP>:8000` ni oching
-   (PosServer ochilganda chiqadigan sahifadagi QR kodni telefon kamerasi bilan skanerlash ham mumkin).
-2. Ilovadagi login va parol bilan kiring. Birinchi marta: `admin` / `admin123` (yoki login `admin`, parol — API kalit).
-3. **Savdo:** USB skaner bilan shtrix-kodni o'qiting yoki nomini yozing (Enter — savatga).
-   **F2** — naqd, **F3** — karta, **F4** — nasiya. Chek kompyuterga ulangan istalgan printerdan
-   chop etiladi (brauzerning "Chop etish" oynasi; termoprinter uchun qog'oz kengligi 80 mm).
-4. **Cheklar** — kunlik cheklar, qayta chop etish, qaytarish (admin).
-   **Ombor** — kirim, yangi tovar, narxni o'zgartirish (admin, omborchi).
-   **Mijozlar** — nasiya qarzlari va to'lov qabul qilish.
+1. Brauzerda `http://<server IP>:8000` ni oching (PosServer ochilganda chiqadigan sahifadagi
+   QR kodni telefon kamerasi bilan skanerlash ham mumkin).
+2. Birinchi oynada login va parol (birinchi marta: `admin` / `admin123`). Keyin ilovaning
+   o'z login oynasi chiqadi — xuddi telefondagi kabi.
+3. Sinxronlash o'zi sozlanadi: server manzili va API kalitni yozish shart emas.
+4. **Chek chiqarish:** Sozlamalar → Printerlar → ulanish turi **"Kompyuter printeri (server orqali)"**
+   va ro'yxatdan printerni tanlang (PosServer turgan kompyuterdagi printer).
+   Brauzerda Bluetooth/USB printer va kamera skaner ishlamaydi — USB skaner esa ishlaydi.
 
-Web'dagi barcha savdo va kirimlar ilovalarga oddiy sinxronlash bilan boradi (chek raqamlari `W1-...`).
-Eslatma: web kassa server va tarmoq ishlab turganda ishlaydi. Internet/tarmoqsiz ham savdo
-qilish kerak bo'lsa, ilovadan foydalaning (6.4).
+Har bir brauzer o'z bazasini saqlaydi va serverga sinxronlanadi; tarmoq bir zum uzilsa ham
+savdo davom etadi, tarmoq qaytganda yuboriladi. Brauzer ma'lumotlarini (cache/cookie)
+tozalasangiz, sinxronlanmagan yozuvlar yo'qolishi mumkin.
+
+Yengil variant ham bor: `http://<server IP>:8000/kassa` — faqat savdo, kirim va nasiya
+(eski kompyuter yoki sekin telefon uchun).
 
 ### 6.1. Docker bilan
 

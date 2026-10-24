@@ -202,7 +202,7 @@ def main() -> None:
     print("  POS Terminal - sinxronlash serveri ishlayapti")
     print("=" * 56)
     ips = local_ips()
-    print(f"  KASSA (brauzerda) : http://{ips[0]}:{PORT}")
+    print(f"  DASTUR (brauzerda): http://{ips[0]}:{PORT}")
     for ip in ips[1:]:
         print(f"  (yoki             : http://{ip}:{PORT})")
     print("  Shu manzilni istalgan kompyuter yoki telefon brauzerida oching")

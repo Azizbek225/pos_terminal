@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import __version__, kassa, printers, sync, web
+from . import __version__, kassa, printers, sync, web, webapp
 from .config import settings
 from .db import Base, SessionLocal, engine, get_session
 from .models import SyncRecord
@@ -41,6 +41,7 @@ DEFAULT_BRANCH_ID = "00000000-0000-4000-8000-200000000001"
 app = FastAPI(title="POS Terminal Sync", version=__version__, lifespan=lifespan)
 app.include_router(web.router)
 app.include_router(kassa.router)
+app.include_router(webapp.router)
 
 
 def require_key(x_api_key: Annotated[str | None, Header()] = None) -> None:
@@ -214,3 +215,7 @@ def daily_report(
         "average": round(total / count) if count else 0,
         "by_cashier": dict(by_cashier),
     }
+
+
+# Oxirida: aniq yo'llar (/app/ sahifasi) statik fayllardan oldin tekshiriladi.
+webapp.mount(app)

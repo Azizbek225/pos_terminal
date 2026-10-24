@@ -282,6 +282,20 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt pyinstaller
+      # Ilovaning brauzer versiyasi (http://<server>:8000/app/) exe ichiga qo'shiladi.
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Ilova (web) build
+        working-directory: app
+        shell: bash
+        run: |
+          flutter pub get
+          flutter build web --release --base-href /app/
+          rm -rf ../server/app/static/webapp
+          cp -r build/web ../server/app/static/webapp
       # Bitta fayl: Docker/PostgreSQL'siz, baza exe yonida (pos.db).
       # Web panel sahifasi (app/static) exe ichiga qo'shiladi.
       - run: pyinstaller --onefile --name PosServer --collect-submodules uvicorn --add-data "app/static:app/static" --distpath ../dist run_server.py

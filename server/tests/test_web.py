@@ -58,7 +58,8 @@ def login(client, username="admin", password="admin123"):
     return client.post("/api/web/login", json={"username": username, "password": password})
 
 
-def test_page_and_login_required(client):
+def test_page_and_login_required(client, monkeypatch, tmp_path):
+    monkeypatch.setattr("app.webapp.WEBAPP_DIR", tmp_path / "yoq")
     assert client.get("/", follow_redirects=False).headers["location"] == "/kassa"
     assert "POS hisobot" in client.get("/panel").text
     assert client.get("/api/web/me").status_code == 401
@@ -149,3 +150,14 @@ def test_connect_payload():
     data = json.loads(web.connect_payload(8000))
     assert data["pos"] == 1 and data["key"] == "test-key"
     assert all(u.startswith("http://") and u.endswith(":8000") for u in data["urls"])
+
+
+def test_webapp_gets_config_only_after_login(client, monkeypatch, tmp_path):
+    (tmp_path / "index.html").write_text("<head><!--POS_CONFIG--></head>", encoding="utf-8")
+    monkeypatch.setattr("app.webapp.WEBAPP_DIR", tmp_path)
+    assert client.get("/", follow_redirects=False).headers["location"] == "/app/"
+    assert client.get("/app/", follow_redirects=False).headers["location"] == "/kassa?next=/app/"
+    seed(client)
+    assert client.post("/api/kassa/login", json={"username": "kassir", "password": "admin123"}).status_code == 200
+    page = client.get("/app/").text
+    assert 'window.POS_CONFIG = {"url": "http://testserver", "key": "test-key"}' in page

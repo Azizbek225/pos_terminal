@@ -214,9 +214,9 @@ class ProductThumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final file = ProductImages.resolve(imagePath);
+    final image = ProductImages.provider(imagePath);
     final theme = Theme.of(context);
-    if (file == null) {
+    if (image == null) {
       return fallback ??
           Container(
             width: size,
@@ -231,13 +231,12 @@ class ProductThumb extends StatelessWidget {
     final px = (size * MediaQuery.devicePixelRatioOf(context)).round();
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
-      child: Image.file(
-        file,
-        key: ValueKey(file.path),
+      child: Image(
+        image: ResizeImage(image, width: px, policy: ResizeImagePolicy.fit),
+        key: ValueKey(imagePath),
         width: size,
         height: size,
         fit: BoxFit.cover,
-        cacheWidth: px,
         gaplessPlayback: true,
         errorBuilder: (_, _, _) => SizedBox(width: size, height: size, child: Icon(Icons.broken_image_outlined, color: theme.hintColor)),
       ),

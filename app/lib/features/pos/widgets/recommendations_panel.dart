@@ -166,7 +166,7 @@ class _ProductTile extends StatelessWidget {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                if (ProductImages.resolve(p.imagePath) != null) ...[
+                if (ProductImages.exists(p.imagePath)) ...[
                   ProductThumb(imagePath: p.imagePath, size: 40),
                   const SizedBox(width: 6),
                 ],

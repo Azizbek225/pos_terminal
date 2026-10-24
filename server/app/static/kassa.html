@@ -260,8 +260,14 @@ $("#login").addEventListener("submit", async e => {
 
 $("#logout").onclick = async () => { await api("/api/web/logout", {body: {}}).catch(() => {}); showLogin(); };
 
+// /kassa?next=/app/ — to'liq ilovaga kirish uchun login (faqat shu sayt ichidagi manzil).
+const NEXT = (() => { const n = new URLSearchParams(location.search).get("next") || ""; return /^\/[a-z]/i.test(n) ? n : ""; })();
+
+if (NEXT) { $("#login h2").textContent = "POS Terminal"; document.title = "POS Terminal"; }
+
 async function start() {
   S.me = await api("/api/kassa/me");
+  if (NEXT) { location.replace(NEXT); return; }
   if (!S.me.branches.length) { showLogin(); $("#loginErr").textContent = "Sizga hech bir filialga ruxsat berilmagan"; return; }
   $("#loginBox").classList.add("hidden");
   $("#app").classList.remove("hidden");

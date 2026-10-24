@@ -216,7 +216,7 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   }
 
   Widget _imageSection() {
-    final has = ProductImages.resolve(_imagePath) != null;
+    final has = ProductImages.exists(_imagePath);
     return Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
       ProductThumb(imagePath: _imagePath, size: 112, radius: 12),
       const SizedBox(width: 16),

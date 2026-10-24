@@ -1,11 +1,13 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 
 /// Xatoni `<appSupport>/startup_error.log` fayliga yozish (yordam so'rash uchun).
 Future<String?> writeStartupLog(Object error, StackTrace stack) async {
+  if (kIsWeb) return null;
   try {
     final dir = await getApplicationSupportDirectory();
     final f = File('${dir.path}${Platform.pathSeparator}startup_error.log');
