@@ -291,6 +291,9 @@ jobs:
       - name: Ilova (web) build
         working-directory: app
         shell: bash
+        # Git Bash "/app/" ni Windows yo'liga aylantirmasin.
+        env:
+          MSYS_NO_PATHCONV: "1"
         run: |
           flutter pub get
           flutter build web --release --base-href /app/
