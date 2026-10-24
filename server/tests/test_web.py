@@ -64,6 +64,16 @@ def test_page_and_login_required(client):
     assert client.get("/api/web/me").status_code == 401
 
 
+def test_default_admin_until_synced(client):
+    assert login(client).status_code == 200
+    push(client, [user("u2", "kassir", role="cashier")])
+    assert login(client).status_code == 200  # boshlang'ich admin hali serverda yo'q
+    seed(client)
+    client.cookies.clear()
+    assert login(client, password="admin") .status_code == 401
+    assert login(client).status_code == 200  # endi sinxronlangan xodim paroli bilan
+
+
 def test_login_rules(client):
     seed(client)
     assert login(client, password="xato").status_code == 401

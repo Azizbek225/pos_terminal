@@ -185,7 +185,7 @@ PosServer ishlab turgan bo'lsa, ilovani o'rnatmasdan ham savdo qilish mumkin:
 
 1. Istalgan kompyuter yoki telefon brauzerida `http://<server IP>:8000` ni oching
    (PosServer ochilganda chiqadigan sahifadagi QR kodni telefon kamerasi bilan skanerlash ham mumkin).
-2. Ilovadagi login va parol bilan kiring. Xodimlar hali yo'q bo'lsa: login `admin`, parol — API kalit.
+2. Ilovadagi login va parol bilan kiring. Birinchi marta: `admin` / `admin123` (yoki login `admin`, parol — API kalit).
 3. **Savdo:** USB skaner bilan shtrix-kodni o'qiting yoki nomini yozing (Enter — savatga).
    **F2** — naqd, **F3** — karta, **F4** — nasiya. Chek kompyuterga ulangan istalgan printerdan
    chop etiladi (brauzerning "Chop etish" oynasi; termoprinter uchun qog'oz kengligi 80 mm).

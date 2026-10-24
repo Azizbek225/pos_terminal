@@ -36,6 +36,7 @@ DEFAULT_BRANCH_ID = "00000000-0000-4000-8000-200000000001"
 COOKIE = "pos_web"
 TOKEN_TTL = 7 * 24 * 3600
 KEY_USER = "__api_key__"
+DEFAULT_ADMIN = ("admin", "admin123")
 PAGE = Path(__file__).resolve().parent / "static" / "panel.html"
 
 router = APIRouter()
@@ -150,12 +151,19 @@ class LoginBody(BaseModel):
 def check_login(session: Session, username: str, password: str) -> tuple[str, dict | None]:
     """(user_id, xodim yozuvi) — API kalit bilan kirilganda yozuv None."""
     uname = username.strip().lower()
-    for u in _records(session, "users"):
+    users = _records(session, "users")
+    for u in users:
         if str(u.get("username") or "").lower() == uname:
             if verify_password(password, u.get("salt") or "", u.get("password_hash") or ""):
                 return u["id"], u
             break
     if uname == "admin" and hmac.compare_digest(password, settings.api_key):
+        return KEY_USER, None
+    # Ilovadagi boshlang'ich admin (admin / admin123) serverga yuborilmaydi — parol
+    # o'zgartirilmaguncha. Serverda "admin" xodimi bo'lmasa, o'sha parol ishlaydi;
+    # ilovada parol o'zgartirilib sinxronlangach, yangi parol talab qilinadi.
+    has_admin = any(str(u.get("username") or "").lower() == DEFAULT_ADMIN[0] for u in users)
+    if not has_admin and uname == DEFAULT_ADMIN[0] and hmac.compare_digest(password, DEFAULT_ADMIN[1]):
         return KEY_USER, None
     raise HTTPException(status_code=401, detail="Login yoki parol noto'g'ri")
 
