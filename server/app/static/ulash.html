@@ -32,9 +32,21 @@
 <main>
   <h1 style="margin-top:0">PosServer ishlayapti</h1>
   <div class="card">
+    <div class="qr">{{PHONE_QR}}</div>
+    <div class="info">
+      <h2>1. Telefon (Android) — o'rnatish va ulash</h2>
+      <ol>
+        <li>Telefon kamerasini shu QR kodga qarating va havolani oching — ilova yuklanadi, uni o'rnating.</li>
+        <li>Ilovani ochib <b>"Do'kon kompyuteriga ulash (QR)"</b> ni bosing va <b>shu QR kodni</b> yana skanerlang.</li>
+      </ol>
+      <p class="muted">Telefon shu kompyuter bilan bitta Wi-Fi'da bo'lsin. Ilova allaqachon o'rnatilgan bo'lsa:
+        Sozlamalar → Sinxronlash → "QR orqali ulash" va shu kod.</p>
+    </div>
+  </div>
+  <div class="card">
     <div class="qr sm">{{KASSA_QR}}</div>
     <div class="info">
-      <h2>1. Dastur — brauzerda</h2>
+      <h2>2. Dastur — brauzerda (o'rnatmasdan)</h2>
       <p>Ilovaning o'zi, hech narsa o'rnatish va sozlash shart emas. Istalgan kompyuter yoki telefon brauzerida oching:</p>
       <p><code>{{KASSA_URL}}</code></p>
       <p class="muted">Telefonda — kamerani shu QR kodga qarating. Kirish: ilovadagi login va parol.
@@ -53,16 +65,11 @@
       <p class="muted" id="netErr"></p>
     </div>
   </div>
-  <h2>2. O'rnatilgan ilovani ulash (APK / Windows dastur)</h2>
+  <h2>3. Boshqa kompyuterdagi ilovani qo'lda ulash</h2>
   <div class="card">
-    <div class="qr">{{QR}}</div>
     <div class="info">
-      <ol>
-        <li>Ilovada: <b>Sozlamalar → Sinxronlash</b></li>
-        <li><b>"QR orqali ulash"</b> tugmasini bosing</li>
-        <li>Shu kodni kameraga ko'rsating — hammasi o'zi sozlanadi</li>
-      </ol>
-      <p class="muted">Kamerasiz qurilmada (kompyuter) qo'lda yozing:</p>
+      <p class="muted">Shu kompyuterga PosSetup bilan o'rnatilgan kassa o'zi ulanadi. Boshqa kompyuterda:
+        Sozlamalar → Sinxronlash ga yozing:</p>
       <p>Server manzili: <code>{{URL}}</code><br>
         <span class="muted">Boshqa manzillar (Tailscale va h.k.): {{URLS}}</span><br>
         API kalit: <code>{{KEY}}</code></p>

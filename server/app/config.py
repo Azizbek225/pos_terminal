@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # Tovar rasmlari saqlanadigan papka (Docker'da volume ga ulang).
     images_dir: str = "./images"
 
+    # Telefonga beriladigan APK (/telefon). PosSetup uni PosServer.exe yoniga qo'yadi.
+    apk_path: str = "./pos-terminal-android.apk"
+
     # Bitta pull so'rovida qaytariladigan maksimal yozuvlar soni.
     max_pull_limit: int = 2000
 

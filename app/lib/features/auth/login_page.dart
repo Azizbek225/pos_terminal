@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/repositories/settings_repository.dart';
+import '../../services/scanner/camera_scanner.dart';
+import '../../services/sync/sync_service.dart';
 import '../../state/providers.dart';
 
 class LoginPage extends ConsumerStatefulWidget {
@@ -17,6 +20,61 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   bool _busy = false;
   bool _obscure = true;
   String? _error;
+
+  /// Telefon hali do'kon serveriga ulanmagan: kirishdan oldin QR orqali ulash
+  /// taklif qilinadi (xodimlar, tovarlar serverdan keladi).
+  bool _canPair = false;
+  String? _pairInfo;
+
+  @override
+  void initState() {
+    super.initState();
+    if (cameraScanSupported) {
+      ref.read(settingsRepoProvider).get(SettingKeys.syncUrl).then((url) {
+        if (mounted && (url ?? '').trim().isEmpty) setState(() => _canPair = true);
+      });
+    }
+  }
+
+  /// Kompyuterdagi PosServer QR kodi (localhost:8000/ulash) — manzil va kalit o'zi yoziladi.
+  Future<void> _pair() async {
+    final raw = await scanWithCamera(
+      context,
+      title: 'Kompyuterga ulash',
+      hint: "Kompyuterdagi PosServer QR kodini ko'rsating",
+    );
+    if (raw == null || !mounted) return;
+    final qr = SyncService.parseConnectQr(raw);
+    if (qr == null) {
+      setState(() => _pairInfo = "Bu PosServer QR kodi emas. Kompyuterda localhost:8000/ulash sahifasini oching.");
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _pairInfo = 'Server qidirilmoqda...';
+    });
+    final service = ref.read(syncServiceProvider);
+    try {
+      final url = await service.firstReachable(qr.urls) ?? qr.urls.first;
+      await ref.read(settingsRepoProvider).setAll({
+        SettingKeys.syncUrl: url,
+        SettingKeys.syncApiKey: qr.key,
+        SettingKeys.syncEnabled: '1',
+      });
+      await service.testConnection();
+      await service.start();
+      if (mounted) {
+        setState(() {
+          _canPair = false;
+          _pairInfo = "Ulandi. Ma'lumotlar yuklanmoqda — bir oz kutib, do'kondagi login/parol bilan kiring.";
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _pairInfo = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -101,6 +159,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                             : const Icon(Icons.login),
                         label: const Text('Kirish'),
                       ),
+                      if (_canPair) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: _busy ? null : _pair,
+                          icon: const Icon(Icons.qr_code_scanner),
+                          label: const Text("Do'kon kompyuteriga ulash (QR)"),
+                        ),
+                      ],
+                      if (_pairInfo != null) ...[
+                        const SizedBox(height: 8),
+                        Text(_pairInfo!, textAlign: TextAlign.center, style: theme.textTheme.bodySmall),
+                      ],
                       const SizedBox(height: 16),
                       Text(
                         "Birinchi kirish: admin / admin123 — kirgach parolni albatta o'zgartiring.",

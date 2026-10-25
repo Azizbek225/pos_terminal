@@ -6,6 +6,7 @@ kalit ekranga chiqadi — ularni telefondagi Sozlamalar > Sinxronlash ga yozing.
 
     python run_server.py          # yoki PyInstaller bilan yig'ilgan PosServer.exe
     PosServer.exe --autostart-off # Windows bilan avtomatik ishga tushishni o'chirish
+    PosServer.exe --init          # (PosSetup) kalit yaratish va firewall ruxsati, keyin chiqish
 
 PosServer.exe birinchi ishga tushganda o'zini Windows avtomatik ishga
 tushirishga qo'shadi (HKCU\\...\\Run, administrator kerak emas) va keyingi
@@ -188,6 +189,14 @@ def main() -> None:
     if "--autostart-off" in args:
         ok = set_autostart(False)
         print("Avtomatik ishga tushish o'chirildi." if ok else "Faqat Windows'dagi PosServer.exe uchun.")
+        return
+    if "--init" in args:
+        # PosSetup administrator huquqida chaqiradi: firewall so'rovi keyin chiqmaydi,
+        # kassa ilovasi esa birinchi ochilishdayoq kalitni topadi.
+        folder = base_dir()
+        os.chdir(folder)
+        load_api_key(folder)
+        open_firewall()
         return
     minimized = "--minimized" in args
     if minimized:

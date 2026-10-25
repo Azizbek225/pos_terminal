@@ -8,6 +8,27 @@ printer va skanerlarni ulash hamda birinchi sozlash.
 
 ---
 
+## Eng oson yo'l: PosSetup.exe (Windows + telefon, 3 daqiqa)
+
+1. Do'kon kompyuterida **PosSetup.exe** ni yuklab oling va oching:
+   https://github.com/Azizbek225/pos_terminal/releases/download/sinov-build/PosSetup.exe
+   ("Windows himoyalandi" chiqsa: **Batafsil → Baribir ishga tushirish**.)
+2. **Next → Install → Finish**. Hammasi o'zi qilinadi: server, kassa dasturi, ish stolida
+   "POS Kassa" va "POS Server" yorliqlari, firewall ruxsati, Windows yonganda server o'zi
+   ishga tushadi. Shu kompyuterdagi kassa serverga **o'zi ulanadi**.
+3. Brauzerda QR kodli sahifa ochiladi (keyin ham: Pusk → POS Terminal → "Telefonni ulash (QR)").
+4. **Telefon** (shu Wi-Fi'da): kamerani birinchi QR kodga qarating → havolani oching →
+   ilova yuklanadi, o'rnating. Ilovani ochib **"Do'kon kompyuteriga ulash (QR)"** ni bosing va
+   **o'sha QR kodni** yana skanerlang. Tayyor — do'kondagi login/parol bilan kiring.
+
+> Avval PosServer.exe ni boshqa papkada ishlatgan bo'lsangiz: eski papkadagi `pos.db`,
+> `api_kalit.txt` va `images` ni `C:\POSTerminal` ga ko'chiring (PosSetup'dan oldin).
+> O'chirish: Windows sozlamalari → Ilovalar → POS Terminal (baza o'chmaydi).
+
+Quyidagi bo'limlar — qo'lda o'rnatish va qo'shimcha imkoniyatlar.
+
+---
+
 ## 0. Qisqacha: qaysi variant sizga kerak?
 
 | Holat | Nima qilish kerak |
