@@ -39,3 +39,13 @@ def test_already_running_detects_listener():
 
 def test_autostart_is_windows_exe_only():
     assert run_server.set_autostart(True) is False
+
+
+def test_init_creates_key_and_exits(monkeypatch, tmp_path):
+    # PosSetup: --init kalit faylini yaratadi va server ishga tushmaydi.
+    monkeypatch.setattr(run_server, "base_dir", lambda: tmp_path)
+    monkeypatch.setattr(run_server.sys, "argv", ["PosServer.exe", "--init"])
+    monkeypatch.delenv("POS_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    run_server.main()
+    assert (tmp_path / "api_kalit.txt").read_text(encoding="utf-8").strip()

@@ -19,6 +19,7 @@ import time
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
@@ -563,10 +564,13 @@ def connect_page(request: Request, session: SessionDep, pos_web: Annotated[str |
     payload = connect_payload(_port(request))
     urls = json.loads(payload)["urls"]
     page = (PAGE.parent / "ulash.html").read_text(encoding="utf-8")
-    page = page.replace("{{QR}}", _qr_svg(payload)).replace("{{URL}}", html.escape(urls[0]))
+    page = page.replace("{{URL}}", html.escape(urls[0]))
     page = page.replace("{{URLS}}", "<br>".join(html.escape(u) for u in urls[1:]) or "—")
     page = page.replace("{{KEY}}", html.escape(settings.api_key))
     kassa_url = urls[0] + "/"
+    # Bitta QR: telefon kamerasi APK ni yuklaydi, ilova esa shu QR dan ulanadi.
+    phone_url = f"{urls[0]}/telefon#pos={quote(payload, safe=':/,')}"
+    page = page.replace("{{PHONE_QR}}", _qr_svg(phone_url))
     page = page.replace("{{KASSA_QR}}", _qr_svg(kassa_url)).replace("{{KASSA_URL}}", html.escape(kassa_url))
     return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 

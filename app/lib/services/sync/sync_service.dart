@@ -590,8 +590,19 @@ class SyncService {
   /// PosServer'ning "/ulash" sahifasidagi QR kod: {"pos":1,"urls":[...],"key":"..."}.
   /// Noto'g'ri kod bo'lsa — null.
   static ({List<String> urls, String key})? parseConnectQr(String raw) {
+    var text = raw.trim();
+    // "Telefonga o'rnatish" QR i: http://<server>/telefon#pos=<json> — telefon
+    // kamerasi uni brauzerda ochib APK yuklaydi, ilova esa shu QR dan ulanadi.
+    final hash = text.indexOf('#pos=');
+    if (text.startsWith('http') && hash > 0) {
+      try {
+        text = Uri.decodeComponent(text.substring(hash + 5));
+      } catch (_) {
+        return null;
+      }
+    }
     try {
-      final m = jsonDecode(raw.trim());
+      final m = jsonDecode(text);
       if (m is! Map || m['pos'] != 1) return null;
       final urls = (m['urls'] as List? ?? const []).whereType<String>().where((u) => u.startsWith('http')).toList();
       final key = m['key'];

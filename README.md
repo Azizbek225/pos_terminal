@@ -38,6 +38,10 @@ avtomatik sinxronlanadi (notebook o'chiq bo'lsa ham telefon savdo qilaveradi).
 
 ## Tez boshlash
 
+**Do'kon uchun:** Windows kompyuterda [PosSetup.exe](https://github.com/Azizbek225/pos_terminal/releases/download/sinov-build/PosSetup.exe) ni oching (server + kassa + telefon ilovasi), keyin ochilgan sahifadagi QR kodni telefon bilan skanerlang. Batafsil: [o'rnatish qo'llanmasi](docs/ORNATISH_QOLLANMASI.md).
+
+Dasturchi uchun:
+
 ```bash
 cd app
 flutter pub get
