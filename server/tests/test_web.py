@@ -161,3 +161,25 @@ def test_webapp_gets_config_only_after_login(client, monkeypatch, tmp_path):
     assert client.post("/api/kassa/login", json={"username": "kassir", "password": "admin123"}).status_code == 200
     page = client.get("/app/").text
     assert 'window.POS_CONFIG = {"url": "http://testserver", "key": "test-key"}' in page
+
+
+def test_connect_page_has_phone_qr(client):
+    seed(client)
+    login(client)
+    page = client.get("/ulash").text
+    assert "{{" not in page and page.count("<svg") >= 2
+
+
+def test_phone_page_serves_apk(client, monkeypatch, tmp_path):
+    # APK yo'q — internetdagi havola ko'rsatiladi, fayl 404.
+    monkeypatch.setattr("app.config.settings.apk_path", str(tmp_path / "yoq.apk"))
+    page = client.get("/telefon").text
+    assert "releases/download" in page and "{{" not in page
+    assert client.get("/telefon/pos-terminal.apk").status_code == 404
+    apk = tmp_path / "pos-terminal-android.apk"
+    apk.write_bytes(b"PK\x03\x04apk")
+    monkeypatch.setattr("app.config.settings.apk_path", str(apk))
+    assert "/telefon/pos-terminal.apk" in client.get("/telefon").text
+    r = client.get("/telefon/pos-terminal.apk")
+    assert r.status_code == 200 and r.content == b"PK\x03\x04apk"
+    assert r.headers["content-type"] == "application/vnd.android.package-archive"

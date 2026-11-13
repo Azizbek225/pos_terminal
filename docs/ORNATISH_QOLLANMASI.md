@@ -8,6 +8,29 @@ printer va skanerlarni ulash hamda birinchi sozlash.
 
 ---
 
+## Eng oson yo'l: PosSetup.exe (Windows + telefon, 3 daqiqa)
+
+1. Do'kon kompyuterida **PosSetup.exe** ni yuklab oling va oching:
+   https://github.com/Azizbek225/pos_terminal/releases/download/sinov-build/PosSetup.exe
+   ("Windows himoyalandi" chiqsa: **Batafsil → Baribir ishga tushirish**.)
+2. **Next → Install → Finish**. Hammasi o'zi qilinadi: kassa, server, telefon ilovasi va
+   (belgi qoldirilsa) internet uchun Tailscale. Ish stolida **bitta belgi — "POS Kassa"**:
+   server u bilan birga fonda (oynasiz) ishlaydi, Windows yonganda ham o'zi yonadi, kassa
+   unga o'zi ulanadi. Server jurnali: `C:\POSTerminal\server.log`.
+3. Brauzerda QR kodli sahifa ochiladi (keyin ham: kassada Sozlamalar → Sinxronlash →
+   **"Telefon va internet (QR)"** yoki Pusk → POS Terminal → "Telefon va internet (QR)").
+4. **Telefon** (shu Wi-Fi'da): kamerani birinchi QR kodga qarating → havolani oching →
+   ilova yuklanadi, o'rnating. Ilovani ochib **"Do'kon kompyuteriga ulash (QR)"** ni bosing va
+   **o'sha QR kodni** yana skanerlang. Tayyor — do'kondagi login/parol bilan kiring.
+
+> Avval PosServer.exe ni boshqa papkada ishlatgan bo'lsangiz — PosSetup eski baza, kalit va
+> rasmlarni `C:\POSTerminal` ga o'zi ko'chiradi (telefonlarni qayta ulash shart emas).
+> O'chirish: Windows sozlamalari → Ilovalar → POS Terminal (baza o'chmaydi).
+
+Quyidagi bo'limlar — qo'lda o'rnatish va qo'shimcha imkoniyatlar.
+
+---
+
 ## 0. Qisqacha: qaysi variant sizga kerak?
 
 | Holat | Nima qilish kerak |
@@ -202,11 +225,18 @@ Yengil variant ham bor: `http://<server IP>:8000/kassa` — faqat savdo, kirim v
 
 ### 6.0.2. Telefon boshqa joyda bo'lsa (internet orqali, bepul)
 
-1. PosServer kompyuteriga bepul **Tailscale** o'rnating (https://tailscale.com/download/windows) va Google bilan kiring — bir marta.
-2. Kompyuterda `http://localhost:8000/ulash` sahifasida **"Internetga ochish"** tugmasini bosing.
-   Birinchi marta Tailscale ruxsat sahifasi ochiladi — **Enable** ni bosing.
-3. Sahifada doimiy havola (`https://<kompyuter>.<nom>.ts.net/`) va QR kod chiqadi. Telefonda uni
-   istalgan joydan (mobil internet) oddiy brauzerda oching — telefonga hech narsa o'rnatilmaydi.
+Eng osoni: PosSetup'da **"Internetdan ham ishlasin"** belgisini qoldiring. Yoki keyinroq
+kompyuterda `http://localhost:8000/ulash` sahifasida **"Internetga ochish"** ni bosing. Qolgani o'zi
+(sahifada 1/3, 2/3, 3/3 ko'rinadi):
+
+1. **Tailscale** o'rnatiladi (Windows "Ha" deb so'rasa — bosing).
+2. Kirish oynasi o'zi ochiladi — **Google bilan kiring** (bir marta).
+3. Ruxsat oynasi o'zi ochiladi — **Enable** ni bosing.
+
+Tayyor: sahifada doimiy havola (`https://<kompyuter>.<nom>.ts.net/`) va QR chiqadi. Telefondagi
+ilova bu havolani o'zi bilib oladi: Wi-Fi'dan chiqsangiz, internet orqali o'zi ulanadi (hech narsa
+yozilmaydi). Brauzerda ochish uchun ham shu havola. PosServer oynasi sarlavhasida doim
+**"INTERNET: YOQIQ"** yoki **"o'chiq"** va sababi ko'rinadi.
 
 Havola o'zgarmaydi, kompyuter qayta yonganda ham ishlayveradi (kompyuter yoniq bo'lishi kerak).
 Xavfsizlik: internetdan kirishda boshlang'ich `admin123` paroli ishlamaydi — ilovada admin parolini

@@ -17,14 +17,20 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
+import urllib.request
+from pathlib import Path
+from typing import Callable
 
 from fastapi import Request
 
 DOWNLOAD_URL = "https://tailscale.com/download/windows"
+MSI_URL = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
 _URL = re.compile(r"https://login\.tailscale\.com/\S+")
 _WIN_PATHS = (r"C:\Program Files\Tailscale\tailscale.exe", r"C:\Program Files (x86)\Tailscale\tailscale.exe")
+_GUI = r"C:\Program Files\Tailscale\tailscale-ipn.exe"
 
 _lock = threading.Lock()
 _job: dict = {}  # ishlab turgan `tailscale login/funnel`: {"proc", "action", "url", "out"}
@@ -158,6 +164,13 @@ def _start(action: str, *args: str) -> dict:
     return {"ok": True, "pending": {"action": action, "url": _job.get("url")}}
 
 
+def _start_funnel(port: int) -> dict:
+    res = _start("funnel", "funnel", "--bg", "--yes", str(port))
+    if not res["ok"] and "-yes" in (res.get("error") or ""):  # eski Tailscale
+        res = _start("funnel", "funnel", "--bg", str(port))
+    return res
+
+
 def enable(port: int) -> dict:
     global _cache
     with _lock:
@@ -167,14 +180,143 @@ def enable(port: int) -> dict:
             return _start("login", "login")
         if st["state"] in ("not_installed", "stopped"):
             return {"ok": False, "error": "Tailscale ishlamayapti — uni oching va kiring"}
-        res = _start("funnel", "funnel", "--bg", "--yes", str(port))
-        if not res["ok"] and "-yes" in (res.get("error") or ""):  # eski Tailscale
-            res = _start("funnel", "funnel", "--bg", str(port))
-        return res
+        return _start_funnel(port)
+
+
+# ---------------------------------------------------------------------------
+#  Usta: bitta tugma — o'rnatish, kirish, ruxsat ketma-ket, o'zi davom etadi.
+#  1/3 Tailscale (o'rnatish / ishga tushirish), 2/3 Google bilan kirish,
+#  3/3 internetga ochish ruxsati ("Enable"). Havolalar brauzerda o'zi ochiladi.
+# ---------------------------------------------------------------------------
+
+WIZARD_POLL = 2.0
+WIZARD_TIMEOUT = 15 * 60
+_wizard: dict = {}
+
+
+def wizard_state() -> dict | None:
+    return dict(_wizard) if _wizard else None
+
+
+def install() -> str | None:
+    """Tailscale'ni o'rnatish (Windows). PosSetup MSI ni server yoniga qo'yadi,
+    bo'lmasa internetdan yuklanadi. Windows bir marta "Ha" deb so'raydi.
+    Xato bo'lsa — matni, aks holda None."""
+    if os.name != "nt":
+        return f"Tailscale'ni qo'lda o'rnating: {DOWNLOAD_URL}"
+    msi = Path(os.environ.get("POS_TAILSCALE_MSI") or Path.cwd() / "tailscale-setup.msi")
+    if not msi.is_file():
+        msi = Path(tempfile.gettempdir()) / "tailscale-setup.msi"
+        try:
+            urllib.request.urlretrieve(MSI_URL, msi)
+        except OSError as e:
+            return f"Tailscale yuklab olinmadi ({e}). Qo'lda o'rnating: {DOWNLOAD_URL}"
+    try:
+        import ctypes
+
+        r = ctypes.windll.shell32.ShellExecuteW(
+            None, "runas", "msiexec.exe", f'/i "{msi}" /passive /norestart TS_UNATTENDEDMODE=always', None, 1)
+    except (OSError, AttributeError) as e:
+        return str(e)
+    if r <= 32:
+        return "O'rnatishga ruxsat berilmadi. Qayta bosing va Windows so'raganda 'Ha' ni tanlang."
+    return None
+
+
+def _launch_gui() -> None:
+    if os.name == "nt" and os.path.exists(_GUI):
+        try:
+            os.startfile(_GUI)  # type: ignore[attr-defined]
+        except OSError:
+            pass
+
+
+def start_wizard(port: int, open_url: Callable[[str], object] | None = None) -> dict:
+    """Ustani fonda boshlaydi (ishlab turgan bo'lsa — o'sha)."""
+    with _lock:
+        if not _wizard.get("running"):
+            _wizard.clear()
+            _wizard.update(running=True, step=1, text="Tekshirilmoqda...", url=None, error=None, done=False)
+            threading.Thread(target=_run_wizard, args=(port, open_url), name="tailscale-wizard", daemon=True).start()
+        return dict(_wizard)
+
+
+def stop_wizard() -> None:
+    _wizard["running"] = False
+
+
+def _run_wizard(port: int, open_url: Callable[[str], object] | None) -> None:
+    global _cache
+    opened: set[str] = set()
+    started = time.time()
+    phase_started: dict[str, float] = {}
+
+    def step(n: int, text: str, url: str | None = None) -> None:
+        _wizard.update(step=n, text=text, url=url)
+        if url and open_url and url not in opened:
+            opened.add(url)
+            try:
+                open_url(url)
+            except Exception:  # noqa: BLE001 — brauzer ochilmasa havola sahifada qoladi
+                pass
+
+    def fail(text: str) -> None:
+        _wizard.update(running=False, error=text, url=_wizard.get("url"))
+
+    try:
+        while _wizard.get("running") and time.time() - started < WIZARD_TIMEOUT:
+            with _lock:
+                _cache = None
+                st = _status(port)
+                state = st["state"]
+                res: dict = {}
+                if state == "need_login":
+                    res = _start("login", "login")
+                elif state == "off":
+                    res = _start_funnel(port)
+            first = phase_started.setdefault(state, time.time())
+            if state == "on":
+                _wizard.update(running=False, done=True, step=3, text="Tayyor: dastur internetdan ochiladi.",
+                               url=None, public_url=st.get("url"))
+                with _lock:
+                    _cache = None
+                return
+            if state == "not_installed":
+                if "install" not in phase_started:
+                    phase_started["install"] = time.time()
+                    step(1, "Tailscale o'rnatilmoqda... Windows ruxsat so'rasa — 'Ha' ni bosing.")
+                    err = install()
+                    if err:
+                        return fail(err)
+                elif time.time() - first > 300:
+                    return fail("Tailscale o'rnatilmadi. Qayta urinib ko'ring.")
+            elif state == "stopped":
+                if "gui" not in phase_started:
+                    phase_started["gui"] = time.time()
+                    step(1, "Tailscale ishga tushirilmoqda...")
+                    _launch_gui()
+                elif time.time() - first > 120:
+                    return fail("Tailscale ishga tushmadi. Kompyuterni qayta yoqib, yana bosing.")
+            elif state in ("need_login", "off"):
+                if not res.get("ok", True) and res.get("error"):
+                    return fail(res["error"])
+                pending = res.get("pending") or {}
+                if state == "need_login":
+                    step(2, "Tailscale'ga kiring: ochilgan oynada Google bilan kiring. Kirgach o'zi davom etadi.",
+                         pending.get("url"))
+                else:
+                    step(3, "Ruxsat bering: ochilgan oynada 'Enable' ni bosing. Keyin o'zi tayyor bo'ladi.",
+                         pending.get("url"))
+            time.sleep(WIZARD_POLL)
+        if _wizard.get("running"):
+            fail("Vaqt tugadi. Qayta bosing.")
+    except Exception as e:  # noqa: BLE001
+        fail(str(e))
 
 
 def disable(port: int) -> dict:
     global _cache
+    stop_wizard()
     with _lock:
         _cache = None
         if _job.get("proc") is not None:

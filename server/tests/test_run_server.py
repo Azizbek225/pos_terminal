@@ -39,3 +39,30 @@ def test_already_running_detects_listener():
 
 def test_autostart_is_windows_exe_only():
     assert run_server.set_autostart(True) is False
+
+
+def test_init_creates_key_and_exits(monkeypatch, tmp_path):
+    # PosSetup: --init kalit faylini yaratadi va server ishga tushmaydi.
+    monkeypatch.setattr(run_server, "base_dir", lambda: tmp_path)
+    monkeypatch.setattr(run_server.sys, "argv", ["PosServer.exe", "--init"])
+    monkeypatch.delenv("POS_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    run_server.main()
+    assert (tmp_path / "api_kalit.txt").read_text(encoding="utf-8").strip()
+
+
+def test_internet_line():
+    on = run_server.internet_line({"state": "on", "url": "https://kassa.tail1.ts.net"})
+    assert on == "INTERNET: YOQIQ  https://kassa.tail1.ts.net/"
+    off = run_server.internet_line({"state": "need_login"})
+    assert off.startswith("INTERNET: o'chiq (Tailscale'ga kirilmagan)") and "/ulash" in off
+
+
+def test_windowless_output_goes_to_log(monkeypatch, tmp_path):
+    # PosServer.exe oynasiz yig'iladi: stdout yo'q — chiqish server.log ga.
+    monkeypatch.setattr(run_server.sys, "stdout", None)
+    monkeypatch.setattr(run_server.sys, "stderr", None)
+    run_server.setup_log(tmp_path)
+    print("salom")
+    run_server.sys.stdout.flush()
+    assert "salom" in (tmp_path / "server.log").read_text(encoding="utf-8")

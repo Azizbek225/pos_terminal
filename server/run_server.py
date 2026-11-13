@@ -6,6 +6,8 @@ kalit ekranga chiqadi — ularni telefondagi Sozlamalar > Sinxronlash ga yozing.
 
     python run_server.py          # yoki PyInstaller bilan yig'ilgan PosServer.exe
     PosServer.exe --autostart-off # Windows bilan avtomatik ishga tushishni o'chirish
+    PosServer.exe --init          # (PosSetup) kalit yaratish va firewall ruxsati, keyin chiqish
+    PosServer.exe --internet      # internetga ochish ustasini darhol boshlash (Tailscale)
 
 PosServer.exe birinchi ishga tushganda o'zini Windows avtomatik ishga
 tushirishga qo'shadi (HKCU\\...\\Run, administrator kerak emas) va keyingi
@@ -32,6 +34,8 @@ DISCOVERY_PORT = int(os.environ.get("POS_DISCOVERY_PORT", "8765"))
 DISCOVERY_MAGIC = b"POS_DISCOVER"
 AUTOSTART_NAME = "PosServer"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+# Oynasiz server qora oyna chaqnatmasin.
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def base_dir() -> Path:
@@ -63,13 +67,13 @@ def open_firewall() -> None:
         for name, proto, port in rules:
             exists = subprocess.run(
                 ["netsh", "advfirewall", "firewall", "show", "rule", f"name={name}"],
-                capture_output=True,
+                capture_output=True, creationflags=NO_WINDOW,
             ).returncode == 0
             if exists:
                 continue
             argv = ["netsh", "advfirewall", "firewall", "add", "rule", f"name={name}", "dir=in", "action=allow",
                     f"protocol={proto}", f"localport={port}", "profile=any"]
-            if subprocess.run(argv, capture_output=True).returncode != 0:
+            if subprocess.run(argv, capture_output=True, creationflags=NO_WINDOW).returncode != 0:
                 elevated.append(
                     f'netsh advfirewall firewall add rule name="{name}" dir=in action=allow '
                     f"protocol={proto} localport={port} profile=any"
@@ -175,27 +179,118 @@ def open_connect_page(port: int = PORT) -> None:
     threading.Thread(target=go, name="pos-open-browser", daemon=True).start()
 
 
-def print_public_url(port: int = PORT) -> None:
+def set_title(text: str) -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.kernel32.SetConsoleTitleW(text)
+    except (OSError, AttributeError):
+        pass
+
+
+_NET_REASON = {
+    "not_installed": "Tailscale o'rnatilmagan",
+    "stopped": "Tailscale ishlamayapti",
+    "need_login": "Tailscale'ga kirilmagan",
+    "off": "o'chirilgan",
+}
+
+
+def internet_line(st: dict) -> str:
+    """Server oynasidagi internet holati qatori."""
+    if st.get("state") == "on":
+        return f"INTERNET: YOQIQ  {st.get('url')}/"
+    reason = _NET_REASON.get(st.get("state"), "noma'lum")
+    return f"INTERNET: o'chiq ({reason}). Yoqish: http://localhost:{PORT}/ulash"
+
+
+def watch_internet(port: int = PORT, interval: float = 60) -> None:
+    """Internet holati o'zgarganda oynaga yozadi va sarlavhada doim ko'rsatadi."""
     from app import funnel
 
-    url = funnel.public_url(port)
-    if url:
-        print(f"  INTERNETDAN (istalgan joydan): {url}/", flush=True)
+    last = None
+    while True:
+        try:
+            line = internet_line(funnel.status(port, fresh=True))
+        except Exception as e:  # noqa: BLE001
+            line = f"INTERNET: tekshirib bo'lmadi ({e})"
+        if line != last:
+            print(f"  [{time.strftime('%H:%M')}] {line}", flush=True)
+            set_title("PosServer - " + line.split("  ")[0].split(" (")[0])
+            last = line
+        time.sleep(interval)
+
+
+def start_internet_wizard(port: int = PORT) -> None:
+    import webbrowser
+
+    from app import funnel
+
+    for _ in range(60):
+        if already_running(port):
+            break
+        time.sleep(0.5)
+    if funnel.status(port, fresh=True).get("state") != "on":
+        funnel.start_wizard(port, webbrowser.open)
+
+
+def setup_log(folder: Path) -> None:
+    """Oynasiz (fon) rejimda chiqish `server.log` ga yoziladi."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    log = folder / "server.log"
+    try:
+        if log.exists() and log.stat().st_size > 5 * 1024 * 1024:
+            log.replace(folder / "server.old.log")
+        f = open(log, "a", encoding="utf-8", buffering=1)  # noqa: SIM115 — jarayon oxirigacha ochiq
+    except OSError:
+        f = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
+    sys.stdout = sys.stdout or f
+    sys.stderr = sys.stderr or f
+
+
+def ask_running_server(port: int, internet: bool, show_page: bool) -> None:
+    """Server allaqachon fonda ishlayapti: boshqaruv sahifasini ochish va
+    (kerak bo'lsa) internetga ochish ustasini boshlash."""
+    import urllib.request
+    import webbrowser
+
+    if internet:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/funnel", data=b'{"on": true}',
+            headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            urllib.request.urlopen(req, timeout=30).read()
+        except OSError as e:
+            print(f"Internet ustasi boshlanmadi: {e}")
+    if show_page:
+        webbrowser.open(f"http://localhost:{port}/ulash")
 
 
 def main() -> None:
     args = set(sys.argv[1:])
+    setup_log(base_dir())
     if "--autostart-off" in args:
         ok = set_autostart(False)
         print("Avtomatik ishga tushish o'chirildi." if ok else "Faqat Windows'dagi PosServer.exe uchun.")
+        return
+    if "--init" in args:
+        # PosSetup administrator huquqida chaqiradi: firewall so'rovi keyin chiqmaydi,
+        # kassa ilovasi esa birinchi ochilishdayoq kalitni topadi.
+        folder = base_dir()
+        os.chdir(folder)
+        load_api_key(folder)
+        open_firewall()
         return
     minimized = "--minimized" in args
     if minimized:
         minimize_console()
     if already_running():
-        print(f"PosServer allaqachon ishlayapti (port {PORT}). Bu oynani yopishingiz mumkin.")
-        if not minimized and sys.stdin and sys.stdin.isatty():
-            input("Yopish uchun Enter bosing...")
+        # "POS Server" belgisi qayta bosilsa — boshqaruv (QR) sahifasi ochiladi.
+        print(f"PosServer allaqachon ishlayapti (port {PORT}).")
+        ask_running_server(PORT, "--internet" in args, not minimized)
         return
 
     folder = base_dir()
@@ -219,7 +314,7 @@ def main() -> None:
     print(f"  Ilovani ulash (QR) : brauzerda http://localhost:{PORT}/ulash")
     print(f"  API kalit          : {os.environ['POS_API_KEY']}")
     print()
-    print("  Bu oynani yopmang (yopsangiz sinxronlash to'xtaydi).")
+    print("  Server fonda ishlaydi (oynasi yo'q). Boshqaruv: http://localhost:8000/ulash")
     if autostart:
         print("  Windows yonganda server o'zi ishga tushadi.")
         print("  (O'chirish: PosServer.exe --autostart-off)")
@@ -231,7 +326,11 @@ def main() -> None:
 
     if not minimized:
         open_connect_page()
-    threading.Thread(target=print_public_url, name="pos-funnel", daemon=True).start()
+    threading.Thread(target=watch_internet, name="pos-funnel", daemon=True).start()
+    if "--internet" in args:
+        # PosSetup'da "Internetdan ham ishlasin" tanlangan: usta o'zi boshlanadi
+        # (Tailscale'ga kirish va ruxsat sahifalari brauzerda ochiladi).
+        threading.Thread(target=start_internet_wizard, name="pos-wizard", daemon=True).start()
 
     import uvicorn
 

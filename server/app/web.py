@@ -19,6 +19,7 @@ import time
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response
@@ -537,8 +538,7 @@ def _qr_svg(text: str) -> str:
 
 def _owner_or_local(request: Request, session: Session, pos_web: str | None) -> None:
     """Server kompyuterining o'zi (localhost, proksisiz) yoki panelga kirgan bosh admin."""
-    local = request.client is not None and request.client.host in _LOCAL_HOSTS
-    if local and not funnel.is_forwarded(request):
+    if _is_local(request):
         return
     user = current_user(session, pos_web)
     if user.branches is not None:
@@ -563,10 +563,13 @@ def connect_page(request: Request, session: SessionDep, pos_web: Annotated[str |
     payload = connect_payload(_port(request))
     urls = json.loads(payload)["urls"]
     page = (PAGE.parent / "ulash.html").read_text(encoding="utf-8")
-    page = page.replace("{{QR}}", _qr_svg(payload)).replace("{{URL}}", html.escape(urls[0]))
+    page = page.replace("{{URL}}", html.escape(urls[0]))
     page = page.replace("{{URLS}}", "<br>".join(html.escape(u) for u in urls[1:]) or "—")
     page = page.replace("{{KEY}}", html.escape(settings.api_key))
     kassa_url = urls[0] + "/"
+    # Bitta QR: telefon kamerasi APK ni yuklaydi, ilova esa shu QR dan ulanadi.
+    phone_url = f"{urls[0]}/telefon#pos={quote(payload, safe=':/,')}"
+    page = page.replace("{{PHONE_QR}}", _qr_svg(phone_url))
     page = page.replace("{{KASSA_QR}}", _qr_svg(kassa_url)).replace("{{KASSA_URL}}", html.escape(kassa_url))
     return HTMLResponse(page, headers={"Cache-Control": "no-store"})
 
@@ -586,11 +589,27 @@ def funnel_switch(body: FunnelBody, request: Request, session: SessionDep,
                   pos_web: Annotated[str | None, Cookie()] = None) -> dict:
     _owner_or_local(request, session, pos_web)
     port = _port(request)
-    res = funnel.enable(port) if body.on else funnel.disable(port)
+    if body.on:
+        # Kompyuterning o'zida bosilsa — kirish/ruxsat sahifalari brauzerda o'zi ochiladi.
+        funnel.start_wizard(port, _browser_opener() if _is_local(request) else None)
+        res: dict = {"ok": True}
+    else:
+        res = funnel.disable(port)
     return {**res, "status": _with_qr(funnel.status(port, fresh=True))}
 
 
+def _is_local(request: Request) -> bool:
+    return request.client is not None and request.client.host in _LOCAL_HOSTS and not funnel.is_forwarded(request)
+
+
+def _browser_opener():
+    import webbrowser
+
+    return webbrowser.open
+
+
 def _with_qr(st: dict) -> dict:
+    st = {**st, "wizard": funnel.wizard_state()}
     if st.get("state") == "on" and st.get("url"):
         return {**st, "qr": _qr_svg(st["url"] + "/")}
     return st
