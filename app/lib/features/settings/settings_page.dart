@@ -10,6 +10,7 @@ import '../../data/repositories/settings_repository.dart';
 import '../../services/demo_data.dart';
 import '../../services/printing/printer_config.dart';
 import '../../services/scanner/camera_scanner.dart';
+import '../../services/sync/local_server.dart';
 import '../../services/sync/sync_service.dart';
 import '../../services/sync/server_discovery.dart';
 import '../../core/formatters.dart';
@@ -778,6 +779,12 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
             runSpacing: 8,
             alignment: WrapAlignment.end,
             children: [
+              if (hasLocalServer)
+                FilledButton.icon(
+                  onPressed: openServerPanel,
+                  icon: const Icon(Icons.phonelink),
+                  label: const Text('Telefon va internet (QR)'),
+                ),
               if (cameraScanSupported)
                 FilledButton.tonalIcon(
                   onPressed: _scanQr,

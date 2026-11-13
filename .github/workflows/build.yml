@@ -299,9 +299,10 @@ jobs:
           flutter build web --release --base-href /app/
           rm -rf ../server/app/static/webapp
           cp -r build/web ../server/app/static/webapp
-      # Bitta fayl: Docker/PostgreSQL'siz, baza exe yonida (pos.db).
+      # Bitta fayl: Docker/PostgreSQL'siz, baza exe yonida (pos.db). Oynasiz — fonda
+      # ishlaydi, chiqish server.log ga; boshqaruv http://localhost:8000/ulash da.
       # Web panel sahifasi (app/static) exe ichiga qo'shiladi.
-      - run: pyinstaller --onefile --name PosServer --collect-submodules uvicorn --add-data "app/static:app/static" --distpath ../dist run_server.py
+      - run: pyinstaller --onefile --noconsole --name PosServer --icon ../app/windows/runner/resources/app_icon.ico --collect-submodules uvicorn --add-data "app/static:app/static" --distpath ../dist run_server.py
       - uses: actions/upload-artifact@v4
         # Artefakt joyi to'lsa ham build qizil bo'lmasin (APK, exe, zip Releases'ga ham yuklanadi).
         continue-on-error: true

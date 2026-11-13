@@ -1,3 +1,4 @@
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -41,6 +42,7 @@ Future<void> main() async {
     if (kIsWeb) await _configureWeb(SettingsRepository(db));
     // PosSetup bilan o'rnatilgan Windows kassa — shu kompyuterdagi serverga o'zi ulanadi.
     await configureLocalServer(SettingsRepository(db));
+    unawaited(startLocalServer());
     // Qurilma qaysi filialda ishlayotgani (birinchi kadrdan oldin — savdo noto'g'ri
     // filialga yozilmasligi uchun).
     final branchId = await SettingsRepository(db).get(SettingKeys.branchId);

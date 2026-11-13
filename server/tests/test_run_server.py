@@ -56,3 +56,13 @@ def test_internet_line():
     assert on == "INTERNET: YOQIQ  https://kassa.tail1.ts.net/"
     off = run_server.internet_line({"state": "need_login"})
     assert off.startswith("INTERNET: o'chiq (Tailscale'ga kirilmagan)") and "/ulash" in off
+
+
+def test_windowless_output_goes_to_log(monkeypatch, tmp_path):
+    # PosServer.exe oynasiz yig'iladi: stdout yo'q — chiqish server.log ga.
+    monkeypatch.setattr(run_server.sys, "stdout", None)
+    monkeypatch.setattr(run_server.sys, "stderr", None)
+    run_server.setup_log(tmp_path)
+    print("salom")
+    run_server.sys.stdout.flush()
+    assert "salom" in (tmp_path / "server.log").read_text(encoding="utf-8")
