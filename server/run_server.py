@@ -7,6 +7,7 @@ kalit ekranga chiqadi — ularni telefondagi Sozlamalar > Sinxronlash ga yozing.
     python run_server.py          # yoki PyInstaller bilan yig'ilgan PosServer.exe
     PosServer.exe --autostart-off # Windows bilan avtomatik ishga tushishni o'chirish
     PosServer.exe --init          # (PosSetup) kalit yaratish va firewall ruxsati, keyin chiqish
+    PosServer.exe --internet      # internetga ochish ustasini darhol boshlash (Tailscale)
 
 PosServer.exe birinchi ishga tushganda o'zini Windows avtomatik ishga
 tushirishga qo'shadi (HKCU\\...\\Run, administrator kerak emas) va keyingi
@@ -176,12 +177,61 @@ def open_connect_page(port: int = PORT) -> None:
     threading.Thread(target=go, name="pos-open-browser", daemon=True).start()
 
 
-def print_public_url(port: int = PORT) -> None:
+def set_title(text: str) -> None:
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.kernel32.SetConsoleTitleW(text)
+    except (OSError, AttributeError):
+        pass
+
+
+_NET_REASON = {
+    "not_installed": "Tailscale o'rnatilmagan",
+    "stopped": "Tailscale ishlamayapti",
+    "need_login": "Tailscale'ga kirilmagan",
+    "off": "o'chirilgan",
+}
+
+
+def internet_line(st: dict) -> str:
+    """Server oynasidagi internet holati qatori."""
+    if st.get("state") == "on":
+        return f"INTERNET: YOQIQ  {st.get('url')}/"
+    reason = _NET_REASON.get(st.get("state"), "noma'lum")
+    return f"INTERNET: o'chiq ({reason}). Yoqish: http://localhost:{PORT}/ulash"
+
+
+def watch_internet(port: int = PORT, interval: float = 60) -> None:
+    """Internet holati o'zgarganda oynaga yozadi va sarlavhada doim ko'rsatadi."""
     from app import funnel
 
-    url = funnel.public_url(port)
-    if url:
-        print(f"  INTERNETDAN (istalgan joydan): {url}/", flush=True)
+    last = None
+    while True:
+        try:
+            line = internet_line(funnel.status(port, fresh=True))
+        except Exception as e:  # noqa: BLE001
+            line = f"INTERNET: tekshirib bo'lmadi ({e})"
+        if line != last:
+            print(f"  [{time.strftime('%H:%M')}] {line}", flush=True)
+            set_title("PosServer - " + line.split("  ")[0].split(" (")[0])
+            last = line
+        time.sleep(interval)
+
+
+def start_internet_wizard(port: int = PORT) -> None:
+    import webbrowser
+
+    from app import funnel
+
+    for _ in range(60):
+        if already_running(port):
+            break
+        time.sleep(0.5)
+    if funnel.status(port, fresh=True).get("state") != "on":
+        funnel.start_wizard(port, webbrowser.open)
 
 
 def main() -> None:
@@ -240,7 +290,11 @@ def main() -> None:
 
     if not minimized:
         open_connect_page()
-    threading.Thread(target=print_public_url, name="pos-funnel", daemon=True).start()
+    threading.Thread(target=watch_internet, name="pos-funnel", daemon=True).start()
+    if "--internet" in args:
+        # PosSetup'da "Internetdan ham ishlasin" tanlangan: usta o'zi boshlanadi
+        # (Tailscale'ga kirish va ruxsat sahifalari brauzerda ochiladi).
+        threading.Thread(target=start_internet_wizard, name="pos-wizard", daemon=True).start()
 
     import uvicorn
 

@@ -80,43 +80,40 @@
 </main>
 <script>
 const $ = id => document.getElementById(id);
-let timer = null;
+let timer = null, wasRunning = false;
+const STEPS = ["Tailscale", "Kirish", "Ruxsat"];
+function stepper(n) {
+  return STEPS.map((t, i) => (i + 1 < n ? "✓ " : i + 1 === n ? "● " : "○ ") + (i + 1) + ". " + t).join(" &nbsp; ");
+}
 function show(st) {
   const text = $("netText"), btn = $("netBtn"), link = $("netLink");
   $("netQr").hidden = true; $("netUrl").hidden = true; btn.hidden = true; link.hidden = true;
-  btn.className = "go";
-  const pending = st.pending;
+  btn.className = "go"; btn.onclick = () => sw(true);
+  $("netErr").textContent = "";
   clearTimeout(timer);
-  if (pending) {
-    text.innerHTML = pending.action === "login"
-      ? "Tailscale hisobingizga kiring (Google bilan). Kirgach shu sahifa o'zi yangilanadi."
-      : "Bir marta ruxsat bering: havolani oching va <b>Enable</b> ni bosing. Keyin shu sahifa o'zi yangilanadi.";
-    if (pending.url) { link.hidden = false; link.href = pending.url; link.textContent = "Ruxsat sahifasini ochish"; }
-    timer = setTimeout(load, 3000);
+  const w = st.wizard;
+  if (w && w.running) {
+    wasRunning = true;
+    text.innerHTML = "<b>" + stepper(w.step) + "</b><br>" + w.text;
+    if (w.url) { link.hidden = false; link.href = w.url; link.textContent = "Oyna ochilmadimi? Shu yerni bosing"; }
+    timer = setTimeout(load, 2000);
     return;
   }
-  if (st.state === "not_installed") {
-    text.innerHTML = "Telefon do'konda bo'lmasa ham ishlashi uchun shu kompyuterga bepul <b>Tailscale</b> o'rnating " +
-      "(bir marta), Google bilan kiring, keyin shu sahifani yangilang. Telefonga hech narsa o'rnatilmaydi.";
-    link.hidden = false; link.href = st.download; link.textContent = "Tailscale'ni yuklab olish";
-  } else if (st.state === "stopped") {
-    text.textContent = "Tailscale o'rnatilgan, lekin ishlamayapti. Uni oching (soat yonidagi belgi) va kiring.";
-    btn.hidden = false; btn.textContent = "Qayta tekshirish"; btn.onclick = load;
-  } else if (st.state === "need_login") {
-    text.textContent = "Tailscale'ga kirish kerak (bir marta).";
-    btn.hidden = false; btn.textContent = "Tailscale'ga kirish"; btn.onclick = () => sw(true);
-  } else if (st.state === "off") {
-    text.innerHTML = "Hozir dastur faqat shu Wi-Fi'da ochiladi. Tugmani bossangiz doimiy havola paydo bo'ladi — " +
-      "telefon istalgan joydan (mobil internet) oddiy brauzerda ochadi.";
-    btn.hidden = false; btn.textContent = "Internetga ochish"; btn.onclick = () => sw(true);
-  } else if (st.state === "on") {
-    text.innerHTML = "Ochiq. Telefonda shu QR kodni skanerlang yoki havolani yozing — istalgan joydan ishlaydi " +
-      "(kompyuter yoniq bo'lsa). Kirish faqat login/parol bilan; xavfsizlik uchun internetdan " +
-      "<b>admin123</b> ishlamaydi — avval ilovada admin parolini o'zgartiring.";
+  // Internetga ochildi: telefon QR kodiga internet havolasi ham qo'shilishi uchun sahifa yangilanadi.
+  if (wasRunning && st.state === "on") { location.reload(); return; }
+  if (st.state === "on") {
+    text.innerHTML = "<b>Internet: yoqiq.</b> Telefon Wi-Fi'dan chiqsa ham ishlaydi (kompyuter yoniq bo'lsa). " +
+      "Brauzerda ochish uchun shu QR yoki havola. Xavfsizlik uchun internetdan <b>admin123</b> ishlamaydi — " +
+      "avval ilovada admin parolini o'zgartiring.";
     $("netUrl").hidden = false; $("netUrl").firstChild.textContent = st.url + "/";
     if (st.qr) { $("netQr").hidden = false; $("netQr").innerHTML = st.qr; }
     btn.hidden = false; btn.className = "go off"; btn.textContent = "Internetdan yopish"; btn.onclick = () => sw(false);
+    return;
   }
+  text.innerHTML = "<b>Internet: o'chiq.</b> Hozir dastur faqat shu Wi-Fi'da ishlaydi. Tugmani bosing — qolgani o'zi: " +
+    "Tailscale o'rnatiladi, Google bilan bir marta kirasiz va 'Enable' ni bosasiz. Telefonga hech narsa o'rnatilmaydi.";
+  btn.hidden = false; btn.textContent = w && w.error ? "Qayta urinish" : "Internetga ochish";
+  if (w && w.error) $("netErr").textContent = w.error;
 }
 async function call(opts) {
   const r = await fetch("/api/funnel", opts);
@@ -127,11 +124,11 @@ async function load() {
   try { show(await call()); } catch (e) { $("netErr").textContent = "Xato: " + e.message; }
 }
 async function sw(on) {
-  $("netErr").textContent = ""; $("netBtn").disabled = true; $("netText").textContent = "Bajarilmoqda...";
+  $("netBtn").disabled = true; $("netText").textContent = "Bajarilmoqda...";
   try {
     const res = await call({method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({on})});
+    show(res.status);
     if (!res.ok && res.error) $("netErr").textContent = res.error;
-    show(res.pending ? {...res.status, pending: res.pending} : res.status);
   } catch (e) { $("netErr").textContent = "Xato: " + e.message; }
   $("netBtn").disabled = false;
 }

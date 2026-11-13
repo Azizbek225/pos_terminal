@@ -6,6 +6,7 @@ Ishga tushirish:
 
 from __future__ import annotations
 
+import os
 import re
 import secrets
 from contextlib import asynccontextmanager
@@ -20,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import __version__, kassa, printers, sync, telefon, web, webapp
+from . import __version__, funnel, kassa, printers, sync, telefon, web, webapp
 from .config import settings
 from .db import Base, SessionLocal, engine, get_session
 from .models import SyncRecord
@@ -79,6 +80,8 @@ def health(session: SessionDep) -> dict:
         "service": "pos-terminal-sync",
         "version": __version__,
         "time": sync.now_ms(),
+        # Internetdagi doimiy havola (Tailscale Funnel) — ilova uni zaxira manzil qiladi.
+        "public_url": funnel.public_url(int(os.environ.get("POS_PORT", "8000"))),
     }
 
 

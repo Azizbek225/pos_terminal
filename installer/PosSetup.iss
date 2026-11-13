@@ -42,6 +42,9 @@ WelcomeLabel2=Kassa dasturi, sinxronlash serveri va telefon ilovasi shu kompyute
 FinishedHeadingLabel=Tayyor!
 FinishedLabel=POS Terminal o'rnatildi. Ish stolida "POS Kassa" va "POS Server" yorliqlari bor.%n%nTelefonni ulash: brauzerda ochiladigan sahifadagi QR kodni telefon kamerasi bilan skanerlang.
 
+[Tasks]
+Name: "internet"; Description: "Internetdan ham ishlasin (telefon do'kondan tashqarida) - Tailscale o'rnatiladi"
+
 [Dirs]
 ; Server bazasi va rasmlar shu yerda — har bir foydalanuvchi yoza olsin.
 Name: "{app}"; Permissions: users-modify
@@ -49,6 +52,10 @@ Name: "{app}"; Permissions: users-modify
 [Files]
 Source: "{#Dist}\PosServer.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Dist}\pos-terminal-android.apk"; DestDir: "{app}"; Flags: ignoreversion
+#if FileExists(SourcePath + "..\dist\tailscale-setup.msi")
+; Server "Internetga ochish" ustasi ham shu fayldan o'rnatadi (internet sekin bo'lsa ham).
+Source: "{#Dist}\tailscale-setup.msi"; DestDir: "{app}"; Flags: ignoreversion
+#endif
 Source: "{#Dist}\windows\*"; DestDir: "{app}\Kassa"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -61,9 +68,14 @@ Name: "{autoprograms}\POS Terminal\Telefonni ulash (QR)"; Filename: "http://loca
 [Run]
 ; Administrator huquqida: API kalit va firewall ruxsati (keyin so'rov chiqmaydi).
 Filename: "{app}\PosServer.exe"; Parameters: "--init"; Flags: runhidden waituntilterminated; StatusMsg: "Server sozlanmoqda..."
+#if FileExists(SourcePath + "..\dist\tailscale-setup.msi")
+Filename: "msiexec.exe"; Parameters: "/i ""{app}\tailscale-setup.msi"" /passive /norestart TS_UNATTENDEDMODE=always"; Flags: waituntilterminated; Tasks: internet; Check: not TailscaleInstalled; StatusMsg: "Tailscale o'rnatilmoqda..."
+#endif
 ; Oddiy foydalanuvchi nomidan: server o'zini Windows avtomatik ishga tushirishga
 ; qo'shadi va QR sahifasini ochadi; kassa shu serverga o'zi ulanadi.
-Filename: "{app}\PosServer.exe"; WorkingDir: "{app}"; Description: "Serverni ishga tushirish"; Flags: postinstall nowait runasoriginaluser
+Filename: "{app}\PosServer.exe"; WorkingDir: "{app}"; Description: "Serverni ishga tushirish"; Flags: postinstall nowait runasoriginaluser; Tasks: not internet
+; "Internetdan ham ishlasin": server internetga ochish ustasini o'zi boshlaydi.
+Filename: "{app}\PosServer.exe"; Parameters: "--internet"; WorkingDir: "{app}"; Description: "Serverni ishga tushirish va internetga ochish"; Flags: postinstall nowait runasoriginaluser; Tasks: internet
 Filename: "{app}\Kassa\pos_terminal.exe"; WorkingDir: "{app}\Kassa"; Description: "Kassani ochish"; Flags: postinstall nowait runasoriginaluser skipifsilent
 
 [UninstallRun]
@@ -71,6 +83,11 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/f /im PosServer.exe"; Flags: runhi
 Filename: "{app}\PosServer.exe"; Parameters: "--autostart-off"; Flags: runhidden; RunOnceId: "AutostartOff"
 
 [Code]
+function TailscaleInstalled: Boolean;
+begin
+  Result := FileExists(ExpandConstant('{commonpf64}\Tailscale\tailscale.exe'));
+end;
+
 // Yangilashda ishlab turgan server va kassa fayllarni band qilmasin.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var

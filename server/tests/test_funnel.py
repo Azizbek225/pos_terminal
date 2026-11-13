@@ -50,32 +50,61 @@ def test_not_installed(client, monkeypatch):
     assert funnel.public_url(8000) is None
 
 
-def test_login_then_funnel_on_and_off(client, ts):
+def wait_wizard(client, cond):
+    for _ in range(200):
+        st = client.get("/api/funnel").json()
+        if cond(st.get("wizard") or {}, st):
+            return st
+        time.sleep(0.05)
+    raise AssertionError(st)
+
+
+def test_wizard_login_then_funnel_on_and_off(client, ts, monkeypatch):
+    monkeypatch.setattr(funnel, "WIZARD_POLL", 0.05)
+    opened: list[str] = []
     seed(client)
     login(client, "filial")
     assert client.get("/api/funnel").status_code == 403  # filial admini emas, faqat bosh admin
     client.cookies.clear()
     login(client)
+    # Kompyuterning o'zidan bosilgandek: havolalar brauzerda ochiladi.
+    monkeypatch.setattr(web, "_is_local", lambda request: True)
+    monkeypatch.setattr(web, "_browser_opener", lambda: opened.append)
     assert client.get("/api/funnel").json()["state"] == "need_login"
 
-    r = client.post("/api/funnel", json={"on": True}).json()
-    assert r["pending"] == {"action": "login", "url": "https://login.tailscale.com/a/abc123"}
+    # Bitta bosish: usta o'zi kirish sahifasini ochadi (2/3).
+    assert client.post("/api/funnel", json={"on": True}).json()["ok"]
+    st = wait_wizard(client, lambda w, _: w.get("step") == 2 and w.get("url"))
+    assert st["wizard"]["url"] == "https://login.tailscale.com/a/abc123"
     ts(login=True)
-    assert wait_ready(client)["state"] == "off"
-
-    # Tailnet'da Funnel hali yoqilmagan: bir martalik ruxsat havolasi.
-    r = client.post("/api/funnel", json={"on": True}).json()
-    assert r["pending"]["url"] == "https://login.tailscale.com/f/funnel?node=n1"
+    # Kirgach o'zi davom etadi: Funnel ruxsati (3/3).
+    st = wait_wizard(client, lambda w, _: w.get("step") == 3 and w.get("url"))
+    assert st["wizard"]["url"] == "https://login.tailscale.com/f/funnel?node=n1"
     ts(approved=True)
-    st = wait_ready(client)
+    st = wait_wizard(client, lambda w, _: w.get("done"))
     assert st["state"] == "on" and st["url"] == "https://kassa.tail1.ts.net" and "<svg" in st["qr"]
+    assert opened == ["https://login.tailscale.com/a/abc123", "https://login.tailscale.com/f/funnel?node=n1"]
     assert "https://kassa.tail1.ts.net" in json.loads(web.connect_payload(8000))["urls"]
+    # Ilova internet havolasini sinxronlash paytida o'zi bilib oladi.
+    assert client.get("/api/health").json()["public_url"] == "https://kassa.tail1.ts.net"
 
     r = client.post("/api/funnel", json={"on": False}).json()
     assert r["ok"] and r["status"]["state"] == "off"
     # Ruxsat berilgan — keyingi yoqish darhol.
-    r = client.post("/api/funnel", json={"on": True}).json()
-    assert r["ok"] and r["status"]["state"] == "on"
+    client.post("/api/funnel", json={"on": True})
+    st = wait_wizard(client, lambda w, _: w.get("done"))
+    assert st["state"] == "on"
+
+
+def test_wizard_not_installed_fails_with_hint(client, monkeypatch):
+    monkeypatch.setattr(funnel, "WIZARD_POLL", 0.05)
+    monkeypatch.setattr(funnel, "binary", lambda: None)
+    monkeypatch.setattr(funnel, "install", lambda: "O'rnatishga ruxsat berilmadi")
+    seed(client)
+    login(client)
+    client.post("/api/funnel", json={"on": True})
+    st = wait_wizard(client, lambda w, _: w.get("error"))
+    assert st["wizard"]["error"] == "O'rnatishga ruxsat berilmadi" and not st["wizard"]["running"]
 
 
 FWD = {"x-forwarded-for": "203.0.113.9", "tailscale-funnel-request": "?1"}

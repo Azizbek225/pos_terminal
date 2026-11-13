@@ -345,6 +345,9 @@ jobs:
           for f in PosServer.exe pos-terminal-android.apk pos-terminal-windows-x64.zip; do
             [ -f "dist/$f" ] || gh release download sinov-build --repo "$GITHUB_REPOSITORY" --pattern "$f" --dir dist
           done
+      - name: Tailscale o'rnatuvchisi (internetdan ishlash uchun, ixtiyoriy)
+        continue-on-error: true
+        run: curl -fsSL -o dist/tailscale-setup.msi https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi || rm -f dist/tailscale-setup.msi
       - name: Kassa fayllarini ochish
         shell: pwsh
         run: Expand-Archive -Path dist/pos-terminal-windows-x64.zip -DestinationPath dist/windows -Force

@@ -49,3 +49,10 @@ def test_init_creates_key_and_exits(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     run_server.main()
     assert (tmp_path / "api_kalit.txt").read_text(encoding="utf-8").strip()
+
+
+def test_internet_line():
+    on = run_server.internet_line({"state": "on", "url": "https://kassa.tail1.ts.net"})
+    assert on == "INTERNET: YOQIQ  https://kassa.tail1.ts.net/"
+    off = run_server.internet_line({"state": "need_login"})
+    assert off.startswith("INTERNET: o'chiq (Tailscale'ga kirilmagan)") and "/ulash" in off

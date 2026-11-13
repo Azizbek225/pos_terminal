@@ -215,6 +215,14 @@ class SyncService {
     await settings.set(SettingKeys.syncKnownUrls, urls.take(6).join('\n'));
   }
 
+  /// Zaxira manzil: ro'yxat oxiriga (asosiy ishlagan manzil birinchi qoladi).
+  Future<void> _rememberSpare(String url) async {
+    final urls = await _knownUrls();
+    if (urls.contains(url)) return;
+    final keep = urls.take(5).toList()..add(url);
+    await settings.set(SettingKeys.syncKnownUrls, keep.join('\n'));
+  }
+
   Future<List<String>> _knownUrls() async => ((await settings.get(SettingKeys.syncKnownUrls)) ?? '')
       .split('\n')
       .map((u) => u.trim())
@@ -264,7 +272,12 @@ class SyncService {
   /// Almashgan bo'lsa — eski serverga yuborilgan yozuvlar yangisida yo'q:
   /// hammasini qayta yuborish uchun belgilaymiz va noldan yuklaymiz.
   Future<String?> _checkServer(_Api api) async {
-    final id = (await api.get('/api/health', const {}))['server_id'] as String?;
+    final health = await api.get('/api/health', const {});
+    final id = health['server_id'] as String?;
+    // Server internetga ochiq bo'lsa (Tailscale Funnel) — havolasini eslab qolamiz:
+    // telefon Wi-Fi'dan chiqqanda server shu manzilda o'zi topiladi.
+    final public = health['public_url'];
+    if (public is String && public.startsWith('https://')) await _rememberSpare(public);
     if (id == null || id == await settings.get(SettingKeys.syncServerId)) return id;
     for (final e in SyncEntities.all) {
       await db.customUpdate('UPDATE ${_table(e).actualTableName} SET dirty = 1', updates: {_table(e)});
