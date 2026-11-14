@@ -6,6 +6,7 @@ import '../../core/formatters.dart';
 import '../../services/sync/sync_service.dart';
 import '../../state/providers.dart';
 import '../users/users_page.dart';
+import 'currency_widgets.dart';
 import 'home_shell.dart';
 
 /// Yuqori panel: bugungi savdo, o'rtacha chek, alertlar soni, sinxronlash holati,
@@ -27,6 +28,7 @@ class TopPanel extends ConsumerWidget {
     final progress = target > 0 ? (total / target).clamp(0.0, 1.0) : null;
 
     final items = <Widget>[
+      UsdRateChip(compact: compact),
       _Metric(
         icon: Icons.payments_outlined,
         label: 'Bugungi savdo',

@@ -1,5 +1,8 @@
+import 'package:drift/drift.dart';
+
 import '../core/branch.dart';
 import '../core/constants.dart';
+import '../core/currency.dart';
 import '../core/security.dart';
 import '../data/database.dart';
 import '../data/repositories/customer_repository.dart';
@@ -44,7 +47,7 @@ class CheckoutService {
   /// To'lov turini kiritilgan summalardan aniqlash.
   static PaymentType resolvePaymentType(PaymentInput p) {
     if (p.debt > 0) return PaymentType.debt;
-    final parts = [p.cash > 0, p.card > 0, p.transfer > 0].where((x) => x).length;
+    final parts = [p.cash > 0 || p.usd > 0, p.card > 0, p.transfer > 0].where((x) => x).length;
     if (parts > 1) return PaymentType.mixed;
     if (p.card > 0) return PaymentType.card;
     if (p.transfer > 0) return PaymentType.transfer;
@@ -91,8 +94,17 @@ class CheckoutService {
     if (payment.covered < total) {
       throw CheckoutException("To'lov yetarli emas");
     }
-    final change = payment.covered - total; // Qaytim faqat naqddan beriladi
-    if (change > payment.cash) throw CheckoutException("Qaytim naqd summadan oshib ketdi");
+    if (payment.usd < 0) throw CheckoutException("Dollar summasi noto'g'ri");
+    if (payment.usd > 0 && payment.usdRate <= 0) throw CheckoutException("Dollar kursi kiritilmagan");
+    final change = payment.covered - total; // Qaytim naqddan (so'mda) beriladi
+    if (change > payment.cash + payment.usdInSum) throw CheckoutException("Qaytim naqd summadan oshib ketdi");
+    final customer = payment.debt > 0
+        ? await (db.select(db.customers)..where((c) => c.id.equals(payment.customerId))).getSingleOrNull()
+        : null;
+    final usdDebt = customer != null && Currency.fromCode(customer.currency) == Currency.usd;
+    if (usdDebt && payment.usdRate <= 0) {
+      throw CheckoutException("Mijoz qarzi dollarda — avval dollar kursini kiriting");
+    }
 
     final dev = await settings.deviceId();
     final now = Ids.nowMs();
@@ -134,16 +146,20 @@ class CheckoutService {
         debtAmount: payment.debt,
         customerId: payment.customerId,
         customerName: payment.customerName,
+        paidUsd: payment.usd,
+        usdRate: payment.usdRate,
       );
       await db.into(db.sales).insert(sale);
       if (payment.debt > 0) {
         await customers!.addEntry(
           customerId: payment.customerId,
           kind: CustomerDebtKind.sale,
-          amount: payment.debt,
+          // Dollar qarzli mijoz: so'm qarz kurs bo'yicha sentga o'tkaziladi.
+          amount: usdDebt ? Money.sumToCents(payment.debt, payment.usdRate) : payment.debt,
           saleId: saleId,
           note: receiptNo,
           user: cashier,
+          usdRate: payment.usdRate,
         );
       }
 
@@ -220,11 +236,17 @@ class CheckoutService {
     await db.transaction(() async {
       await sales.markRefunded(s.sale, by);
       if (s.sale.debtAmount > 0 && s.sale.customerId.isNotEmpty && customers != null) {
-        // Nasiyaga yozilgan qism mijoz qarzidan chiqariladi.
+        // Nasiyaga yozilgan qism mijoz qarzidan chiqariladi — aynan daftarga
+        // yozilgan summa (dollar qarzda — o'sha kursdagi sent).
+        final rows = await (db.select(db.customerDebts)
+              ..where((d) => d.saleId.equals(s.sale.id) & d.kind.equals(CustomerDebtKind.sale.code) & d.isDeleted.equals(false)))
+            .get();
+        final written = rows.isEmpty ? s.sale.debtAmount : rows.fold<int>(0, (a, d) => a + d.amount);
         await customers!.addEntry(
           customerId: s.sale.customerId,
           kind: CustomerDebtKind.refund,
-          amount: -s.sale.debtAmount,
+          amount: -written,
+          usdRate: rows.isEmpty ? 0 : rows.first.usdRate,
           saleId: s.sale.id,
           note: s.sale.receiptNo,
           user: by,

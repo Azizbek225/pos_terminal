@@ -108,6 +108,7 @@ class SyncService {
     SyncEntities.supplierPayments => db.supplierPayments,
     SyncEntities.customers => db.customers,
     SyncEntities.customerDebts => db.customerDebts,
+    SyncEntities.currencyRates => db.currencyRates,
     _ => throw ArgumentError('Noma\'lum entity: $entity'),
   };
 

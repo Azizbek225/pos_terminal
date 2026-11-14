@@ -553,6 +553,25 @@ o'chiring (2–4-bo'limlardagi yo'llar), shunda toza baza bilan boshlanadi.
 - **Qarzlar → Mijozlar (nasiya):** har bir mijozning qarzi va daftari. "To'lov qabul qilish" — qarzni kamaytiradi; "Qarz yozish" — eski (daftardagi) qarzni kiritish. Xato to'lovni bekor qilish uchun qatorni uzoq bosing.
 - Nasiya chek qaytarilsa, qarz ham avtomatik kamayadi. Mijozlar barcha filiallarda umumiy, qarz esa har filialda alohida.
 
+### 10.2. Dollar (valyuta)
+
+- **Kurs** yuqori panelda ko'rinadi ("Dollar kursi"). Internetdan (Markaziy bank, cbu.uz) kuniga 2 marta
+  o'zi olinadi: ertalab (08:00 dan keyin) va tushdan keyin (14:00 dan keyin). Kursni bosib "Internetdan hozir
+  olish" yoki (Admin) qo'lda kiritish mumkin. Kurs boshqa kassalarga sinxronlanadi. Internet bo'lmasa kassa
+  kursni do'kon serveridan (PosServer) oladi.
+- **Dollar narxli tovar**: tovar kartasida "Dollar narx" bo'limiga sotuv narxini dollarda yozing (masalan 0.60).
+  So'm narx kurs bo'yicha hisoblanadi va yuqoriga yaxlitlanadi (Sozlamalar → Dollar: 100 so'm standart).
+  Kurs **oshsa** so'm narx ham oshadi, **tushsa — o'zgarmaydi** (qimmat kursda olingan tovar zarariga sotilmaydi).
+  Savdo ekranida narx ikkala valyutada ko'rinadi: "$0.60 · 7 100 so'm".
+- **Dollar bilan to'lov**: to'lov oynasida "Dollar bilan" (naqd) yoki "Aralash" rejimida dollar maydoni bor —
+  qolgani so'mda, qaytim so'mda beriladi.
+- **Chek** faqat so'mda chiqadi. Sozlamalar → Dollar → "Chekda dollar narxlar ham chiqsin" belgilansa,
+  dollar narxlar va kurs ham chiqadi.
+- **Qarzlar dollarda**: firma yoki mijoz kartasida "Hisob/Qarz valyutasi: Dollar" tanlansa, uning qarzi dollarda
+  yuritiladi. Dollar firmadan kirimda narxlar dollarda kiritiladi; to'lovni dollarda yoki so'mda (kurs bilan)
+  qilish mumkin. Mijozga nasiya so'mdagi summa kurs bo'yicha dollarga yoziladi.
+  Hujjati bor firma/mijozning valyutasini o'zgartirib bo'lmaydi.
+
 ## 11. Muammolar va yechimlar
 
 | Muammo | Yechim |

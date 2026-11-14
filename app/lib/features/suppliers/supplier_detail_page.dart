@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants.dart';
+import '../../core/currency.dart';
 import '../../core/formatters.dart';
 import '../../data/database.dart';
 import '../../data/repositories/supplier_repository.dart';
@@ -32,6 +33,8 @@ class SupplierDetailPage extends ConsumerWidget {
       );
     }
 
+    final cur = supplier.currency;
+
     Future<void> menu(String v) async {
       final repo = ref.read(supplierRepoProvider);
       switch (v) {
@@ -41,8 +44,8 @@ class SupplierDetailPage extends ConsumerWidget {
           final amount = await askNumber(
             context,
             title: "Qo'lda qarz qo'shish (tovarsiz)",
-            suffix: "so'm",
-            decimal: false,
+            suffix: cur == Currency.usd.code ? r'$' : "so'm",
+            decimal: cur == Currency.usd.code,
           );
           if (amount == null || amount <= 0) return;
           final user = ref.read(authProvider)!;
@@ -50,7 +53,7 @@ class SupplierDetailPage extends ConsumerWidget {
             supplierId: supplier.id,
             lines: const [],
             kind: PurchaseKind.opening,
-            total: amount.round(),
+            total: Money.toMinor(amount, cur),
             note: "Qo'lda kiritilgan qarz",
             userId: user.id,
             userName: user.fullName,
@@ -92,7 +95,7 @@ class SupplierDetailPage extends ConsumerWidget {
               children: [
                 Text(debt >= 0 ? 'Sizning qarzingiz' : 'Firma sizga qarz', style: theme.textTheme.labelLarge),
                 Text(
-                  Fmt.money(debt.abs()),
+                  Money.fmt(debt.abs(), cur),
                   style: theme.textTheme.headlineMedium?.copyWith(
                     color: debtColor(context, debt),
                     fontWeight: FontWeight.bold,
@@ -100,12 +103,12 @@ class SupplierDetailPage extends ConsumerWidget {
                 ),
                 Text(
                   [
-                    'Kirim: ${Fmt.money(purchases.where((p) => p.total > 0).fold<int>(0, (s, p) => s + p.total))}',
+                    'Kirim: ${Money.fmt(purchases.where((p) => p.total > 0).fold<int>(0, (s, p) => s + p.total), cur)}',
                     if (purchases.any((p) => p.total < 0))
-                      'Kam kelgan: ${Fmt.money(-purchases.where((p) => p.total < 0).fold<int>(0, (s, p) => s + p.total))}',
-                    "To'langan: ${Fmt.money(payments.where((m) => m.amount > 0).fold<int>(0, (s, m) => s + m.amount))}",
+                      'Kam kelgan: ${Money.fmt(-purchases.where((p) => p.total < 0).fold<int>(0, (s, p) => s + p.total), cur)}',
+                    "To'langan: ${Money.fmt(payments.where((m) => m.amount > 0).fold<int>(0, (s, m) => s + m.amount), cur)}",
                     if (payments.any((m) => m.amount < 0))
-                      'Qaytarib olingan: ${Fmt.money(-payments.where((m) => m.amount < 0).fold<int>(0, (s, m) => s + m.amount))}',
+                      'Qaytarib olingan: ${Money.fmt(-payments.where((m) => m.amount < 0).fold<int>(0, (s, m) => s + m.amount), cur)}',
                   ].join(' · '),
                   style: theme.textTheme.bodySmall,
                 ),
@@ -166,9 +169,9 @@ class SupplierDetailPage extends ConsumerWidget {
             Expanded(
               child: TabBarView(
                 children: [
-                  _PurchasesTab(supplier: supplier, purchases: purchases, paid: paid),
-                  _PaymentsTab(payments: payments, purchases: purchases, isAdmin: isAdmin),
-                  _LedgerTab(purchases: purchases, payments: payments),
+                  _PurchasesTab(supplier: supplier, purchases: purchases, paid: paid, cur: cur),
+                  _PaymentsTab(payments: payments, purchases: purchases, isAdmin: isAdmin, cur: cur),
+                  _LedgerTab(purchases: purchases, payments: payments, cur: cur),
                 ],
               ),
             ),
@@ -180,7 +183,8 @@ class SupplierDetailPage extends ConsumerWidget {
 }
 
 class _PurchasesTab extends StatelessWidget {
-  const _PurchasesTab({required this.supplier, required this.purchases, required this.paid});
+  const _PurchasesTab({required this.supplier, required this.purchases, required this.paid, required this.cur});
+  final String cur;
   final Supplier supplier;
   final List<SupplierPurchase> purchases;
   final int paid;
@@ -209,7 +213,7 @@ class _PurchasesTab extends StatelessWidget {
             : r.isPaid
             ? ("To'langan", Colors.green.shade700)
             : r.covered > 0
-            ? ('Qisman · qoldi ${Fmt.money(r.remaining)}', Colors.orange.shade800)
+            ? ('Qisman · qoldi ${Money.fmt(r.remaining, cur)}', Colors.orange.shade800)
             : ('To\'lanmagan', Theme.of(context).colorScheme.error);
         return Card(
           margin: EdgeInsets.zero,
@@ -237,7 +241,7 @@ class _PurchasesTab extends StatelessWidget {
               style: TextStyle(color: status.$2),
             ),
             trailing: Text(
-              r.isCredit ? '−${Fmt.money(-p.total)}' : Fmt.money(p.total),
+              r.isCredit ? '−${Money.fmt(-p.total, cur)}' : Money.fmt(p.total, cur),
               style: Theme.of(context).textTheme.titleMedium
                   ?.copyWith(color: r.isCredit ? Colors.green.shade700 : null),
             ),
@@ -249,7 +253,8 @@ class _PurchasesTab extends StatelessWidget {
 }
 
 class _PaymentsTab extends ConsumerWidget {
-  const _PaymentsTab({required this.payments, required this.purchases, required this.isAdmin});
+  const _PaymentsTab({required this.payments, required this.purchases, required this.isAdmin, required this.cur});
+  final String cur;
   final List<SupplierPayment> payments;
   final List<SupplierPurchase> purchases;
   final bool isAdmin;
@@ -280,7 +285,7 @@ class _PaymentsTab extends ConsumerWidget {
                   )
                 : Icon(m.amount < 0 ? Icons.south_west : Icons.payments_outlined),
             title: Text(
-              m.amount < 0 ? 'Firma qaytardi: ${Fmt.money(-m.amount)}' : Fmt.money(m.amount),
+              m.amount < 0 ? 'Firma qaytardi: ${Money.fmt(-m.amount, cur)}' : Money.fmt(m.amount, cur),
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             subtitle: Text(
@@ -302,7 +307,7 @@ class _PaymentsTab extends ConsumerWidget {
                       final ok = await confirmDialog(
                         context,
                         "To'lovni bekor qilish",
-                        "${Fmt.money(m.amount.abs())} yozuvi o'chirilsinmi?",
+                        "${Money.fmt(m.amount.abs(), cur)} yozuvi o'chirilsinmi?",
                         ok: "O'chirish",
                         danger: true,
                       );
@@ -320,7 +325,8 @@ class _PaymentsTab extends ConsumerWidget {
 }
 
 class _LedgerTab extends StatelessWidget {
-  const _LedgerTab({required this.purchases, required this.payments});
+  const _LedgerTab({required this.purchases, required this.payments, required this.cur});
+  final String cur;
   final List<SupplierPurchase> purchases;
   final List<SupplierPayment> payments;
 
@@ -354,13 +360,13 @@ class _LedgerTab extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                isPurchase ? '+${Fmt.money(e.debit)}' : '−${Fmt.money(e.credit)}',
+                isPurchase ? '+${Money.fmt(e.debit, cur)}' : '−${Money.fmt(e.credit, cur)}',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   color: isPurchase ? theme.colorScheme.error : Colors.green.shade700,
                 ),
               ),
-              Text('qoldiq: ${Fmt.money(e.balance)}', style: theme.textTheme.bodySmall),
+              Text('qoldiq: ${Money.fmt(e.balance, cur)}', style: theme.textTheme.bodySmall),
             ],
           ),
         );

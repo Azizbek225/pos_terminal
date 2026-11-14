@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from . import __version__, funnel, kassa, printers, sync, telefon, web, webapp
+from . import __version__, funnel, kassa, kurs, printers, sync, telefon, web, webapp
 from .config import settings
 from .db import Base, SessionLocal, engine, get_session
 from .models import SyncRecord
@@ -44,6 +44,7 @@ app.include_router(web.router)
 app.include_router(kassa.router)
 app.include_router(webapp.router)
 app.include_router(telefon.router)
+app.include_router(kurs.router)
 
 
 def require_key(x_api_key: Annotated[str | None, Header()] = None) -> None:

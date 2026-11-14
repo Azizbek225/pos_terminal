@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/currency.dart';
 import '../../shell/common_widgets.dart';
 import '../../../core/formatters.dart';
 import '../../../data/database.dart';
@@ -174,7 +175,7 @@ class ProductSearchFieldState extends ConsumerState<ProductSearchField> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(Fmt.money(p.salePrice), style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text(productPriceLabel(p), style: const TextStyle(fontWeight: FontWeight.bold)),
                         Text(
                           'Qoldiq: ${Fmt.qty(p.stockQty)} ${p.unit}',
                           style: TextStyle(fontSize: 12, color: low ? theme.colorScheme.error : null),

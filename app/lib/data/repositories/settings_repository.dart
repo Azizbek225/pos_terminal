@@ -41,6 +41,11 @@ class SettingKeys {
   static const themeMode = 'ui.theme'; // system | light | dark
   static const frequentDays = 'ui.frequentDays'; // 7 | 30
   static const uiScale = 'ui.scale'; // 1 | 0.8 | 0.7 — ekran masshtabi
+
+  static const currencyAuto = 'currency.auto'; // 1 | 0 — kursni internetdan kuniga 2 marta olish
+  static const currencyLastSlot = 'currency.lastSlot'; // "2026-11-14-am" — oxirgi olingan navbat
+  static const currencyRoundStep = 'currency.roundStep'; // dollar narx so'mga necha so'mgacha yaxlitlanadi
+  static const receiptUsd = 'receipt.usd'; // 1 — chekda dollar narxlar ham chiqadi
 }
 
 class SettingsRepository {

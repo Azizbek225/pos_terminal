@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/currency.dart';
 import '../../../core/formatters.dart';
 import '../../../state/cart.dart';
 import '../../../state/providers.dart';
@@ -47,7 +48,7 @@ class _CartLineTile extends ConsumerWidget {
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
       Text(
-        '${Fmt.money(p.salePrice)} / ${p.unit}'
+        '${productPriceLabel(p)} / ${p.unit}'
         '${p.barcode.isNotEmpty ? '  ·  ${p.barcode}' : ''}',
         style: theme.textTheme.bodySmall,
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants.dart';
+import '../../core/currency.dart';
 import '../../core/formatters.dart';
 import '../../data/database.dart';
 import '../../data/repositories/stock_repository.dart';
@@ -46,6 +47,10 @@ class PurchaseDetailPage extends ConsumerWidget {
     final credit = kind == PurchaseKind.credit;
     final theme = Theme.of(context);
     final deleted = p.isDeleted;
+    final cur = supplier?.currency ?? Currency.uzs.code;
+
+    /// Dollar firma kirimida narxlar sentda — ombor tannarxi so'mda (kirim kursi bilan).
+    int costSum(int price) => cur == Currency.usd.code ? Money.centsToSum(price, p.usdRate) : price;
 
     Future<void> addPhoto(bool camera) async {
       final name = await pickDocumentPhoto(context, camera: camera);
@@ -75,9 +80,9 @@ class PurchaseDetailPage extends ConsumerWidget {
             ? "Bu qarz yozuvi o'chiriladi. Davom etilsinmi?"
             : credit
             ? "Bu yozuv o'chiriladi${items.isEmpty ? '' : ' va tovarlar omborga qaytariladi'}. "
-                  "Qarz ${Fmt.money(-p.total)} ga oshadi. Davom etilsinmi?"
+                  "Qarz ${Money.fmt(-p.total, cur)} ga oshadi. Davom etilsinmi?"
             : "Kirim o'chiriladi va tovarlar ombordan ayriladi (${items.length} pozitsiya). "
-                  "Qarz ${Fmt.money(p.total)} ga kamayadi. Davom etilsinmi?",
+                  "Qarz ${Money.fmt(p.total, cur)} ga kamayadi. Davom etilsinmi?",
         ok: 'Bekor qilish',
         cancel: 'Yopish',
         danger: true,
@@ -95,7 +100,7 @@ class PurchaseDetailPage extends ConsumerWidget {
                     productId: it.productId,
                     type: credit ? MovementType.receipt : MovementType.supplierReturn,
                     qty: credit ? it.qty : -it.qty,
-                    unitCost: it.price,
+                    unitCost: costSum(it.price),
                     refId: p.id,
                     note: '${credit ? 'Qaytarish' : 'Kirim'} bekor qilindi: ${p.supplierName}',
                   ),
@@ -121,7 +126,7 @@ class PurchaseDetailPage extends ConsumerWidget {
         : status.isPaid
         ? "To'liq to'langan"
         : status.covered > 0
-        ? "Qisman to'langan · qoldi ${Fmt.money(status.remaining)}"
+        ? "Qisman to'langan · qoldi ${Money.fmt(status.remaining, cur)}"
         : "To'lanmagan";
 
     return Scaffold(
@@ -150,7 +155,7 @@ class PurchaseDetailPage extends ConsumerWidget {
                 if (p.note.isNotEmpty) Text('Izoh: ${p.note}'),
                 const SizedBox(height: 8),
                 Text(
-                  credit ? 'Qarzdan ayrildi: ${Fmt.money(-p.total)}' : 'Summa: ${Fmt.money(p.total)}',
+                  credit ? 'Qarzdan ayrildi: ${Money.fmt(-p.total, cur)}' : 'Summa: ${Money.fmt(p.total, cur)}',
                   style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 if (statusText.isNotEmpty)
@@ -184,7 +189,7 @@ class PurchaseDetailPage extends ConsumerWidget {
                         ],
                         Expanded(
                           child: Text(
-                            "Shu kirimda to'langan: ${Fmt.money(m.amount)} · ${Fmt.dateMs(m.paidAt)}"
+                            "Shu kirimda to'langan: ${Money.fmt(m.amount, cur)} · ${Fmt.dateMs(m.paidAt)}"
                             "${m.receivedBy.isEmpty ? '' : ' · oldi: ${m.receivedBy}'}",
                             style: theme.textTheme.bodySmall,
                           ),
@@ -204,7 +209,7 @@ class PurchaseDetailPage extends ConsumerWidget {
                       suggested: status != null && status.remaining > 0 ? status.remaining : null,
                     ),
                     icon: const Icon(Icons.payments_outlined),
-                    label: Text("To'lov qilish (firma qarzi ${Fmt.money(debt)})"),
+                    label: Text("To'lov qilish (firma qarzi ${Money.fmt(debt, cur)})"),
                   ),
                 ],
                 if (supplier != null && !deleted && kind == PurchaseKind.purchase && items.isNotEmpty) ...[
@@ -243,11 +248,11 @@ class PurchaseDetailPage extends ConsumerWidget {
                             dense: true,
                             title: Text(items[i].productName),
                             subtitle: Text(
-                              '${Fmt.qty(items[i].qty)} ${items[i].unit} × ${Fmt.money(items[i].price)}'
+                              '${Fmt.qty(items[i].qty)} ${items[i].unit} × ${Money.fmt(items[i].price, cur)}'
                               '${items[i].barcode.isEmpty ? '' : ' · ${items[i].barcode}'}',
                             ),
                             trailing: Text(
-                              Fmt.money(items[i].lineTotal),
+                              Money.fmt(items[i].lineTotal, cur),
                               style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
                           ),
@@ -256,7 +261,7 @@ class PurchaseDetailPage extends ConsumerWidget {
                         ListTile(
                           dense: true,
                           title: Text('Jami: ${Fmt.qty(items.fold<double>(0, (s, x) => s + x.qty))} dona'),
-                          trailing: Text(Fmt.money(p.total.abs()), style: theme.textTheme.titleMedium),
+                          trailing: Text(Money.fmt(p.total.abs(), cur), style: theme.textTheme.titleMedium),
                         ),
                       ],
                     ),
@@ -278,6 +283,9 @@ Future<bool> openShortageDialog(
 }) async {
   final qty = {for (final it in items) it.id: 0.0};
   final note = TextEditingController();
+  final cur = (await ref.read(supplierRepoProvider).byId(purchase.supplierId))?.currency ?? Currency.uzs.code;
+  int costSum(int price) => cur == Currency.usd.code ? Money.centsToSum(price, purchase.usdRate) : price;
+  if (!context.mounted) return false;
   final ok = await showDialog<bool>(
     context: context,
     builder: (c) => StatefulBuilder(
@@ -303,7 +311,7 @@ Future<bool> openShortageDialog(
                         ListTile(
                           dense: true,
                           title: Text(it.productName),
-                          subtitle: Text('Kirim: ${Fmt.qty(it.qty)} ${it.unit} × ${Fmt.money(it.price)}'),
+                          subtitle: Text('Kirim: ${Fmt.qty(it.qty)} ${it.unit} × ${Money.fmt(it.price, cur)}'),
                           trailing: ActionChip(
                             label: Text((qty[it.id] ?? 0) == 0 ? '0' : '−${Fmt.qty(qty[it.id]!)} ${it.unit}'),
                             onPressed: () async {
@@ -321,7 +329,7 @@ Future<bool> openShortageDialog(
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Qarzdan ayriladi: ${Fmt.money(sum)}',
+                  'Qarzdan ayriladi: ${Money.fmt(sum, cur)}',
                   style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold),
                 ),
               ],
@@ -371,7 +379,7 @@ Future<bool> openShortageDialog(
               productId: l.productId,
               type: MovementType.supplierReturn,
               qty: -l.qty,
-              unitCost: l.price,
+              unitCost: costSum(l.price),
               refId: id,
               note: 'Kam keldi / qaytarildi: ${purchase.supplierName} $doc',
             ),

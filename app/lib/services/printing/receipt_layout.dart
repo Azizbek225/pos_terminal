@@ -1,4 +1,5 @@
 import '../../core/constants.dart';
+import '../../core/currency.dart';
 import '../../core/formatters.dart';
 import '../../data/repositories/sale_repository.dart';
 
@@ -23,8 +24,18 @@ class RLine {
 }
 
 class StoreInfo {
-  const StoreInfo({this.name = "Xo'jalik mollari", this.address = '', this.phone = '', this.tin = '', this.footer = ''});
+  const StoreInfo({
+    this.name = "Xo'jalik mollari",
+    this.address = '',
+    this.phone = '',
+    this.tin = '',
+    this.footer = '',
+    this.showUsd = false,
+  });
   final String name;
+
+  /// Chekda dollar narxlar ham chiqsinmi (sozlama). Aks holda faqat so'm.
+  final bool showUsd;
   final String address;
   final String phone;
   final String tin;
@@ -36,6 +47,9 @@ class ReceiptLayout {
   static List<RLine> build(SaleWithItems s, StoreInfo store, {int width = 48, bool copy = false}) {
     final sale = s.sale;
     final lines = <RLine>[];
+    final rate = sale.usdRate;
+    final usd = store.showUsd && rate > 0;
+    String inUsd(num sum) => Money.usd(sum / rate);
     lines.add(RLine(store.name, align: RAlign.center, bold: true, big: true));
     if (store.address.isNotEmpty) lines.add(RLine(store.address, align: RAlign.center));
     if (store.phone.isNotEmpty) lines.add(RLine('Tel: ${store.phone}', align: RAlign.center));
@@ -57,6 +71,7 @@ class ReceiptLayout {
       }
       final left = '   ${Fmt.qty(it.qty)} ${it.unit} x ${Fmt.money(it.price, suffix: false)}';
       lines.add(RLine(_lr(left, Fmt.money(it.qty * it.price, suffix: false), width)));
+      if (usd) lines.add(RLine(_lr('   (${inUsd(it.price)})', inUsd(it.qty * it.price), width)));
       if (it.discountAmount > 0) {
         lines.add(RLine(_lr('   Chegirma', '-${Fmt.money(it.discountAmount, suffix: false)}', width)));
       }
@@ -69,9 +84,17 @@ class ReceiptLayout {
     }
     // JAMI — katta shriftda yarim kenglik.
     lines.add(RLine(_lr('JAMI:', Fmt.money(sale.total), width ~/ 2), bold: true, big: true));
+    if (usd) {
+      lines.add(RLine(_lr('Dollarda:', inUsd(sale.total), width), bold: true));
+      lines.add(RLine(_lr('Kurs:', "1\$ = ${Fmt.money(rate)}", width)));
+    }
     lines.add(RLine.separator);
     lines.add(RLine(_lr("To'lov turi:", PaymentType.fromCode(sale.paymentType).label, width)));
     if (sale.paidCash > 0) lines.add(RLine(_lr('Naqd:', Fmt.money(sale.paidCash), width)));
+    if (sale.paidUsd > 0 && rate > 0) {
+      final inSum = Fmt.money((sale.paidUsd * rate).round());
+      lines.add(RLine(_lr(usd ? 'Dollar:' : 'Dollar bilan:', usd ? '${Money.usd(sale.paidUsd)} = $inSum' : inSum, width)));
+    }
     if (sale.paidCard > 0) lines.add(RLine(_lr('Karta:', Fmt.money(sale.paidCard), width)));
     if (sale.paidTransfer > 0) lines.add(RLine(_lr("O'tkazma:", Fmt.money(sale.paidTransfer), width)));
     if (sale.debtAmount > 0) {

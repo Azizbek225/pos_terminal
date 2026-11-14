@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants.dart';
+import '../../core/currency.dart';
 import '../../core/formatters.dart';
 import '../../core/season.dart';
 import '../../data/database.dart';
@@ -48,6 +49,9 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   /// Shu formada tanlangan, lekin hali saqlanmagan rasmlar (bekor qilinsa o'chiriladi).
   final _pickedImages = <String>{};
   bool _saved = false;
+
+  /// Dollar narx shu formada o'zgartirildimi (unda so'm narx joriy kurs bilan qayta hisoblanadi).
+  bool _usdTouched = false;
 
   bool get _isNew => widget.product == null;
 
@@ -92,6 +96,8 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
     c('purchase').text = n(p?.purchasePrice ?? 0);
     c('sale').text = n(p?.salePrice ?? 0);
     c('wholesale').text = n(p?.wholesalePrice ?? 0);
+    c('saleUsd').text = n(p?.salePriceUsd ?? 0);
+    c('purchaseUsd').text = n(p?.purchasePriceUsd ?? 0);
     c('minStock').text = n(p?.minStock ?? 0);
     c('maxStock').text = n(p?.maxStock ?? 0);
     c('location').text = p?.location ?? '';
@@ -127,8 +133,25 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
   int _i(String k) => _d(k).round();
   String _t(String k) => c(k).text.trim();
 
+  /// Dollar narx kiritilganda so'm narxlarni joriy kurs bilan hisoblash.
+  void _onUsdChanged() {
+    final rate = ref.read(usdRateProvider);
+    setState(() {
+      _usdTouched = true;
+      if (rate <= 0) return;
+      final sale = _d('saleUsd');
+      if (sale > 0) c('sale').text = '${Money.usdToSum(sale, rate, step: ref.read(usdRoundStepProvider))}';
+      final cost = _d('purchaseUsd');
+      if (cost > 0) c('purchase').text = '${(cost * rate).round()}';
+    });
+  }
+
   Future<void> _save() async {
     if (!_form.currentState!.validate()) return;
+    if (_d('saleUsd') > 0 && ref.read(usdRateProvider) <= 0) {
+      showMessage(context, "Dollar kursi kiritilmagan — yuqoridagi kurs tugmasidan kiriting", error: true);
+      return;
+    }
     setState(() => _saving = true);
     final repo = ref.read(productRepoProvider);
     try {
@@ -159,6 +182,15 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         purchasePrice: Value(_i('purchase')),
         salePrice: Value(_i('sale')),
         wholesalePrice: Value(_i('wholesale')),
+        salePriceUsd: Value(_d('saleUsd')),
+        purchasePriceUsd: Value(_d('purchaseUsd')),
+        // Kurs: dollar narx o'zgartirilsa — joriy kurs; aks holda avvalgisi
+        // (tovar nomini tahrirlash narxni kurs tushganda pasaytirib yubormasin).
+        usdRate: Value(_d('saleUsd') <= 0
+            ? 0
+            : (_usdTouched || (widget.product?.usdRate ?? 0) == 0)
+                ? ref.read(usdRateProvider)
+                : widget.product!.usdRate),
         minStock: Value(_d('minStock')),
         maxStock: Value(_d('maxStock')),
         location: Value(_t('location')),
@@ -242,6 +274,15 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
         ]),
       ),
     ]);
+  }
+
+  String _usdHelper() {
+    final rate = ref.watch(usdRateProvider);
+    if (rate <= 0) return 'Dollar kursi hali kiritilmagan';
+    final usd = _d('saleUsd');
+    if (usd <= 0) return "Kurs: 1\$ = ${Fmt.money(rate)}. Kiritsangiz so'm narx kursdan hisoblanadi";
+    return "1\$ = ${Fmt.money(rate)} → ${Fmt.money(Money.usdToSum(usd, rate, step: ref.watch(usdRoundStepProvider)))}. "
+        "Kurs oshsa narx ham oshadi, tushsa — o'zgarmaydi";
   }
 
   @override
@@ -350,6 +391,29 @@ class _ProductFormPageState extends ConsumerState<ProductFormPage> {
                 text('brand', 'Brend'),
               ]),
               text('description', 'Tavsif', maxLines: 2),
+            ]),
+            section('Dollar narx (ixtiyoriy)', [
+              row([
+                TextFormField(
+                  controller: c('purchaseUsd'),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9., ]'))],
+                  decoration: const InputDecoration(labelText: 'Kirim narxi', suffixText: r'$'),
+                  onChanged: (_) => _onUsdChanged(),
+                ),
+                TextFormField(
+                  controller: c('saleUsd'),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9., ]'))],
+                  decoration: InputDecoration(
+                    labelText: 'Sotuv narxi',
+                    suffixText: r'$',
+                    helperText: _usdHelper(),
+                    helperMaxLines: 3,
+                  ),
+                  onChanged: (_) => _onUsdChanged(),
+                ),
+              ]),
             ]),
             section("Narxlar (so'm)", [
               row([

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/currency.dart';
 import '../../core/constants.dart';
 import '../../core/formatters.dart';
 import '../../data/database.dart';
@@ -318,7 +319,8 @@ class _BranchCard extends ConsumerWidget {
             Text(Fmt.money(s.total), style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Text("${s.count} chek · o'rtacha ${Fmt.money(s.average)}", style: theme.textTheme.bodySmall),
-            Text('Foyda: ${Fmt.money(s.profit)} · naqd ${Fmt.money(s.cash)} · karta ${Fmt.money(s.card)}',
+            Text('Foyda: ${Fmt.money(s.profit)} · naqd ${Fmt.money(s.cash)}'
+                '${s.usd > 0 ? ' (shundan ${Money.usd(s.usd)})' : ''} · karta ${Fmt.money(s.card)}',
                 style: theme.textTheme.bodySmall),
             if (s.debt > 0)
               Text('Nasiyaga: ${Fmt.money(s.debt)} (hali olinmagan)',

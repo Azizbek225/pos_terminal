@@ -58,6 +58,7 @@ class PrinterService {
       phone: s[SettingKeys.storePhone] ?? '',
       tin: s[SettingKeys.storeTin] ?? '',
       footer: s[SettingKeys.receiptFooter] ?? '',
+      showUsd: s[SettingKeys.receiptUsd] == '1',
     );
   }
 

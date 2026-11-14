@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/currency.dart';
 import '../../core/formatters.dart';
 import '../../data/repositories/supplier_repository.dart';
 import '../../state/providers.dart';
@@ -71,12 +72,16 @@ class _DebtsPageState extends ConsumerState<SupplierDebtsTab> {
         value: Fmt.money(summary.totalDebt),
         icon: Icons.account_balance_wallet_outlined,
         color: scheme.error,
-        subtitle: '${summary.debtorCount} ta firmaga',
+        subtitle: [
+          if (summary.totalDebtUsd > 0) '+ ${Money.usd(summary.totalDebtUsd / 100)}',
+          '${summary.debtorCount} ta firmaga',
+        ].join(' · '),
         compact: narrow,
       ),
       StatTile(
         label: "Bugun to'langan",
         value: Fmt.money(summary.paidToday),
+        subtitle: summary.paidTodayUsd > 0 ? '+ ${Money.usd(summary.paidTodayUsd / 100)}' : null,
         icon: Icons.payments_outlined,
         color: Colors.green.shade700,
         compact: narrow,
@@ -187,7 +192,7 @@ class _SupplierTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              balance.debt == 0 ? '0' : Fmt.money(balance.debt.abs()),
+              balance.debt == 0 ? '0' : Money.fmt(balance.debt.abs(), balance.currency),
               style: theme.textTheme.titleMedium?.copyWith(
                 color: debtColor(context, balance.debt),
                 fontWeight: FontWeight.bold,

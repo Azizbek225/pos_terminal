@@ -119,6 +119,14 @@ class Products extends Table with SyncColumns {
   IntColumn get salePrice => integer().withDefault(const Constant(0))(); // Sotuv narxi
   IntColumn get wholesalePrice => integer().withDefault(const Constant(0))(); // Ulgurji narx
 
+  // --- Dollar narxlar (ixtiyoriy) ---
+  /// Sotuv narxi dollarda (0 — tovar so'mda). Bo'lsa `salePrice` kurs bo'yicha
+  /// hisoblanadi: kurs oshsa narx ham oshadi, tushsa — o'zgarmaydi (zarar yo'q).
+  RealColumn get salePriceUsd => real().withDefault(const Constant(0))();
+  RealColumn get purchasePriceUsd => real().withDefault(const Constant(0))(); // Kirim narxi dollarda
+  /// `salePrice` hisoblangan kurs (so'm/$). Faqat yuqoriga o'zgaradi.
+  IntColumn get usdRate => integer().withDefault(const Constant(0))();
+
   // --- Ombor ---
   /// Joriy qoldiq — `stock_movements` yig'indisining keshi (sinxronlanmaydi).
   RealColumn get stockQty => real().withDefault(const Constant(0))();
@@ -177,6 +185,11 @@ class Sales extends Table with SyncColumns {
   IntColumn get debtAmount => integer().withDefault(const Constant(0))();
   TextColumn get customerId => text().withDefault(const Constant(''))();
   TextColumn get customerName => text().withDefault(const Constant(''))();
+
+  /// Dollar bilan to'langan naqd (dollarda) va savdo paytidagi kurs (so'm/$).
+  /// `paidUsd * usdRate` so'm to'lovga qo'shiladi.
+  RealColumn get paidUsd => real().withDefault(const Constant(0))();
+  IntColumn get usdRate => integer().withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -284,6 +297,10 @@ class Suppliers extends Table with SyncColumns {
   TextColumn get note => text().withDefault(const Constant(''))();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
 
+  /// Hisob valyutasi: UZS yoki USD. USD bo'lsa shu firmaning barcha kirim,
+  /// to'lov summalari va kirim narxlari SENTDA saqlanadi (1 $ = 100).
+  TextColumn get currency => text().withDefault(const Constant('UZS'))();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -306,6 +323,9 @@ class SupplierPurchases extends Table with SyncColumns {
   TextColumn get userId => text().withDefault(const Constant(''))();
   TextColumn get userName => text().withDefault(const Constant(''))();
   TextColumn get branchId => text().withDefault(const Constant(kDefaultBranchId))(); // Filial (eski yozuvlar — asosiy)
+
+  /// Hujjat paytidagi dollar kursi (so'm/$), dollar firmalar uchun.
+  IntColumn get usdRate => integer().withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -360,6 +380,9 @@ class Customers extends Table with SyncColumns {
   TextColumn get note => text().withDefault(const Constant(''))();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
 
+  /// Qarz valyutasi: UZS yoki USD. USD bo'lsa daftardagi summalar SENTDA.
+  TextColumn get currency => text().withDefault(const Constant('UZS'))();
+
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -379,6 +402,26 @@ class CustomerDebts extends Table with SyncColumns {
   TextColumn get userId => text().withDefault(const Constant(''))();
   TextColumn get userName => text().withDefault(const Constant(''))();
   TextColumn get branchId => text().withDefault(const Constant(kDefaultBranchId))();
+
+  /// Yozuv paytidagi dollar kursi (dollar qarzlarda so'm to'lovni hisoblash uchun).
+  IntColumn get usdRate => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Valyuta kurslari tarixi (sinxronlanadi — hamma kassada bir xil kurs).
+/// Joriy kurs — eng oxirgi yozilgani. Markaziy bank kursi har kuni bitta
+/// yozuv (`id` = "cbu-USD-YYYY-MM-DD", qurilmalar orasida takrorlanmaydi),
+/// qo'lda kiritilgani — alohida yozuv.
+@DataClassName('CurrencyRate')
+class CurrencyRates extends Table with SyncColumns {
+  TextColumn get id => text()();
+  TextColumn get currency => text().withDefault(const Constant('USD'))();
+  RealColumn get rate => real()(); // 1 dollar necha so'm
+  TextColumn get rateDate => text().withDefault(const Constant(''))(); // YYYY-MM-DD
+  TextColumn get source => text().withDefault(const Constant('manual'))(); // cbu | manual | net
+  TextColumn get userName => text().withDefault(const Constant(''))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -412,12 +455,13 @@ class Settings extends Table {
   SupplierPayments,
   Customers,
   CustomerDebts,
+  CurrencyRates,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   /// Baza fayli ilovaning shaxsiy papkasida saqlanadi (Hujjatlar papkasida emas —
   /// foydalanuvchi tasodifan o'chirib yubormasligi va bulutli sinxronlash
@@ -474,6 +518,21 @@ class AppDatabase extends _$AppDatabase {
           for (final c in [sales.debtAmount, sales.customerId, sales.customerName]) {
             if (!await _columnExists('sales', c.name)) await m.addColumn(sales, c);
           }
+          // v7: dollar — narxlar, to'lovlar, qarzlar va kurslar.
+          if (!await _tableExists('currency_rates')) await m.createTable(currencyRates);
+          for (final (t, c) in <(TableInfo, GeneratedColumn)>[
+            (products, products.salePriceUsd),
+            (products, products.purchasePriceUsd),
+            (products, products.usdRate),
+            (sales, sales.paidUsd),
+            (sales, sales.usdRate),
+            (suppliers, suppliers.currency),
+            (supplierPurchases, supplierPurchases.usdRate),
+            (customers, customers.currency),
+            (customerDebts, customerDebts.usdRate),
+          ]) {
+            if (!await _columnExists(t.actualTableName, c.name)) await m.addColumn(t, c);
+          }
           // v6: sinxronlash uchun "yuborilmagan" yozuvlar indeksi (_createIndexes).
           await _createIndexes();
         },
@@ -524,6 +583,7 @@ class AppDatabase extends _$AppDatabase {
       'CREATE INDEX IF NOT EXISTS idx_customer_debts_customer ON customer_debts(customer_id, created_at)',
       'CREATE INDEX IF NOT EXISTS idx_movements_branch ON stock_movements(branch_id, product_id)',
       'CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_currency_rates_created ON currency_rates(currency, created_at)',
     ];
     for (final s in stmts) {
       await customStatement(s);

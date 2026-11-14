@@ -9,7 +9,7 @@ Product _p(String id, int price) => Product(
       id: id, sku: '', barcode: '', barcode2: '', name: 'P$id', shortName: '', description: '',
       categoryId: null, brand: '', manufacturer: '', country: '', supplier: '', mxikCode: '', packageCode: '',
       vatPercent: 12, unit: 'dona', packQty: 1, isWeighted: false, purchasePrice: 0, salePrice: price,
-      wholesalePrice: 0, stockQty: 0, minStock: 0, maxStock: 0, location: '', color: '', size: '', material: '',
+      wholesalePrice: 0, salePriceUsd: 0, purchasePriceUsd: 0, usdRate: 0, stockQty: 0, minStock: 0, maxStock: 0, location: '', color: '', size: '', material: '',
       weightKg: 0, volumeL: 0, warrantyMonths: 0, seasonTags: '', isActive: true, imagePath: '', notes: '',
       createdAt: 0, updatedAt: 0, version: 1, deviceId: '', isDeleted: false, dirty: false,
     );

@@ -9,6 +9,7 @@ import '../data/database.dart';
 import '../data/repositories/activity_repository.dart';
 import '../data/repositories/alert_repository.dart';
 import '../data/repositories/branch_repository.dart';
+import '../data/repositories/currency_repository.dart';
 import '../data/repositories/product_repository.dart';
 import '../data/repositories/sale_repository.dart';
 import '../data/repositories/settings_repository.dart';
@@ -19,6 +20,7 @@ import '../data/repositories/supplier_repository.dart';
 import '../data/repositories/user_repository.dart';
 import '../services/alert_service.dart';
 import '../services/checkout_service.dart';
+import '../services/currency_service.dart';
 import '../services/notification_service.dart';
 import '../services/printing/printer_service.dart';
 import '../services/sync/sync_service.dart';
@@ -91,6 +93,24 @@ final checkoutServiceProvider = Provider((ref) => CheckoutService(
       alerts: ref.watch(alertServiceProvider),
       customers: ref.watch(customerRepoProvider),
     ));
+
+final currencyRepoProvider = Provider(
+    (ref) => CurrencyRepository(ref.watch(databaseProvider), _deviceId(ref), activity: ref.watch(activityRepoProvider)));
+final currencyServiceProvider = Provider((ref) {
+  final s = CurrencyService(repo: ref.watch(currencyRepoProvider), settings: ref.watch(settingsRepoProvider));
+  ref.onDispose(s.dispose);
+  return s;
+});
+
+/// Joriy dollar kursi (null — hali kiritilmagan).
+final usdRateRecordProvider = StreamProvider<CurrencyRate?>((ref) => ref.watch(currencyRepoProvider).watchCurrent());
+
+/// Joriy kurs, so'm (0 — noma'lum).
+final usdRateProvider = Provider<int>((ref) => ref.watch(usdRateRecordProvider).value?.rate.round() ?? 0);
+
+/// Dollar narx so'mga necha so'mgacha (yuqoriga) yaxlitlanadi.
+final usdRoundStepProvider =
+    Provider<int>((ref) => (int.tryParse(_setting(ref, SettingKeys.currencyRoundStep) ?? '') ?? 100).clamp(1, 100000));
 
 final printerServiceProvider = Provider((ref) => PrinterService(ref.watch(settingsRepoProvider)));
 

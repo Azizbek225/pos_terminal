@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/currency.dart';
 import '../../../core/formatters.dart';
 import '../../../core/season.dart';
 import '../../../data/database.dart';
@@ -176,7 +177,7 @@ class _ProductTile extends StatelessWidget {
                 ),
               ]),
             ),
-            Text(Fmt.money(p.salePrice),
+            Text(productPriceLabel(p),
                 style: TextStyle(color: theme.colorScheme.primary, fontWeight: FontWeight.bold)),
             Row(children: [
               Expanded(

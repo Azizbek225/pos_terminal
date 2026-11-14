@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants.dart';
+import '../../core/currency.dart';
 import '../../core/formatters.dart';
 import '../../data/database.dart';
 import '../../state/providers.dart';
@@ -27,6 +28,7 @@ class _CustomerFormState extends ConsumerState<_CustomerForm> {
   late final _phone = TextEditingController(text: widget.customer?.phone ?? '');
   late final _address = TextEditingController(text: widget.customer?.address ?? '');
   late final _note = TextEditingController(text: widget.customer?.note ?? '');
+  late String _currency = widget.customer?.currency ?? Currency.uzs.code;
   bool _saving = false;
 
   @override
@@ -47,6 +49,7 @@ class _CustomerFormState extends ConsumerState<_CustomerForm> {
             phone: _phone.text,
             address: _address.text,
             note: _note.text,
+            currency: _currency,
           );
       if (mounted) Navigator.pop(context, c);
     } catch (e) {
@@ -84,6 +87,20 @@ class _CustomerFormState extends ConsumerState<_CustomerForm> {
             controller: _note,
             decoration: const InputDecoration(labelText: 'Izoh (ixtiyoriy)', prefixIcon: Icon(Icons.notes)),
           ),
+          const SizedBox(height: 12),
+          Row(children: [
+            const Text('Qarz valyutasi:'),
+            const SizedBox(width: 12),
+            SegmentedButton<String>(
+              showSelectedIcon: false,
+              segments: [
+                ButtonSegment(value: Currency.uzs.code, label: const Text("So'm")),
+                ButtonSegment(value: Currency.usd.code, label: const Text(r'Dollar ($)')),
+              ],
+              selected: {_currency},
+              onSelectionChanged: (v) => setState(() => _currency = v.first),
+            ),
+          ]),
         ]),
       ),
       actions: [
@@ -112,7 +129,8 @@ class CustomerPicker extends ConsumerWidget {
           title: Text(selected!.name, style: const TextStyle(fontWeight: FontWeight.w600)),
           subtitle: Text([
             if (selected!.phone.isNotEmpty) selected!.phone,
-            debt > 0 ? 'Hozirgi qarzi: ${Fmt.money(debt)}' : 'Qarzi yo\'q',
+            debt > 0 ? 'Hozirgi qarzi: ${Money.fmt(debt, selected!.currency)}' : 'Qarzi yo\'q',
+            if (selected!.currency == Currency.usd.code) 'nasiya dollarga yoziladi',
           ].join(' · ')),
           trailing: IconButton(
             tooltip: 'Boshqa mijoz',
@@ -177,6 +195,11 @@ class _MoneyDialogState extends ConsumerState<_MoneyDialog> {
   PaymentType _method = PaymentType.cash;
   bool _saving = false;
 
+  /// Dollar qarzli mijoz so'm bilan to'layapti (kurs bo'yicha dollarga o'tadi).
+  bool _paySum = false;
+
+  bool get _usd => widget.customer.currency == Currency.usd.code;
+
   @override
   void dispose() {
     _amount.dispose();
@@ -184,20 +207,41 @@ class _MoneyDialogState extends ConsumerState<_MoneyDialog> {
     super.dispose();
   }
 
+  /// Kiritilgan summa mijoz valyutasida (so'm yoki sent).
+  int _minor(int rate) {
+    final v = Fmt.parseNum(_amount.text) ?? 0;
+    if (!_usd) return v.round();
+    if (_paySum) return Money.sumToCents(v.round(), rate);
+    return (v * 100).round();
+  }
+
   Future<void> _save() async {
-    final amount = (Fmt.parseNum(_amount.text) ?? 0).round();
+    final rate = ref.read(usdRateProvider);
+    if (_usd && _paySum && rate <= 0) {
+      showMessage(context, 'Dollar kursi kiritilmagan', error: true);
+      return;
+    }
+    final amount = _minor(rate);
+    final cur = widget.customer.currency;
+    var note = _note.text.trim();
+    if (_usd && _paySum) {
+      final sum = (Fmt.parseNum(_amount.text) ?? 0).round();
+      note = [Fmt.money(sum), 'kurs ${Fmt.money(rate, suffix: false)}', if (note.isNotEmpty) note].join(', ');
+    }
     setState(() => _saving = true);
     try {
       final repo = ref.read(customerRepoProvider);
       final user = ref.read(authProvider);
       if (widget.payment) {
-        await repo.addPayment(widget.customer.id, amount, method: _method.code, note: _note.text, user: user);
+        await repo.addPayment(widget.customer.id, amount,
+            method: _method.code, note: note, user: user, usdRate: _usd ? rate : 0);
       } else {
-        await repo.addManualDebt(widget.customer.id, amount, note: _note.text, user: user);
+        await repo.addManualDebt(widget.customer.id, amount, note: note, user: user, usdRate: _usd ? rate : 0);
       }
       ref.read(syncServiceProvider).requestSync();
       if (mounted) {
-        showMessage(context, widget.payment ? "To'lov qabul qilindi: ${Fmt.money(amount)}" : 'Qarz yozildi: ${Fmt.money(amount)}');
+        showMessage(context,
+            widget.payment ? "To'lov qabul qilindi: ${Money.fmt(amount, cur)}" : 'Qarz yozildi: ${Money.fmt(amount, cur)}');
         Navigator.pop(context);
       }
     } catch (e) {
@@ -210,27 +254,60 @@ class _MoneyDialogState extends ConsumerState<_MoneyDialog> {
   @override
   Widget build(BuildContext context) {
     final debt = ref.watch(customerDebtProvider(widget.customer.id)).value ?? 0;
+    final rate = ref.watch(usdRateProvider);
+    final cur = widget.customer.currency;
+    final inSum = !_usd || _paySum;
+    final entered = Fmt.parseNum(_amount.text) ?? 0;
+    String? hint;
+    if (_usd && rate > 0 && entered > 0) {
+      hint = _paySum ? '= ${Money.usd(Money.sumToCents(entered.round(), rate) / 100)} (kurs ${Fmt.money(rate, suffix: false)})'
+          : '≈ ${Fmt.money(Money.centsToSum((entered * 100).round(), rate))}';
+    }
     return AlertDialog(
       title: Text(widget.payment ? "Qarz to'lovi" : 'Qarz yozish'),
       content: SizedBox(
         width: 420,
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Text(widget.customer.name, style: Theme.of(context).textTheme.titleMedium),
-          Text('Hozirgi qarzi: ${Fmt.money(debt)}'),
+          Text('Hozirgi qarzi: ${Money.fmt(debt, cur)}'
+              '${_usd && rate > 0 && debt > 0 ? ' (≈ ${Fmt.money(Money.centsToSum(debt, rate))})' : ''}'),
+          if (_usd) ...[
+            const SizedBox(height: 8),
+            SegmentedButton<bool>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: false, label: Text(r'Dollarda ($)')),
+                ButtonSegment(value: true, label: Text("So'mda (kurs bilan)")),
+              ],
+              selected: {_paySum},
+              onSelectionChanged: (v) => setState(() {
+                _paySum = v.first;
+                _amount.clear();
+              }),
+            ),
+          ],
           const SizedBox(height: 12),
           TextField(
             controller: _amount,
             autofocus: true,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9 ]'))],
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(inSum ? r'[0-9 ]' : r'[0-9., ]'))],
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             decoration: InputDecoration(
               labelText: widget.payment ? "To'lov summasi" : 'Qarz summasi',
-              suffixText: "so'm",
+              suffixText: inSum ? "so'm" : r'$',
+              helperText: hint,
               suffixIcon: widget.payment && debt > 0
-                  ? TextButton(onPressed: () => _amount.text = '$debt', child: const Text('Hammasi'))
+                  ? TextButton(
+                      onPressed: () => setState(() => _amount.text = !_usd
+                          ? '$debt'
+                          : _paySum
+                              ? '${Money.centsToSum(debt, rate)}'
+                              : (debt / 100).toStringAsFixed(2)),
+                      child: const Text('Hammasi'))
                   : null,
             ),
+            onChanged: (_) => setState(() {}),
             onSubmitted: (_) => _save(),
           ),
           if (widget.payment) ...[

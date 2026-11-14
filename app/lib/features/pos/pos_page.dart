@@ -71,7 +71,7 @@ class _PosPageState extends ConsumerState<PosPage> with SingleTickerProviderStat
 
     PaymentResult? result;
     if (quickCash) {
-      result = PaymentResult(PaymentInput(cash: cart.total), autoPrint);
+      result = PaymentResult(PaymentInput(cash: cart.total, usdRate: ref.read(usdRateProvider)), autoPrint);
     } else {
       result = await showPaymentDialog(context, total: cart.total, printDefault: autoPrint);
     }
