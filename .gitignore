@@ -21,3 +21,6 @@ __pycache__/
 Thumbs.db
 dist/
 server/test_images/
+
+# Server rasmlari (sinov paytida yaratiladi)
+server/images/
