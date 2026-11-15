@@ -2,7 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../../core/branch.dart';
 import '../../core/constants.dart';
-import '../../core/formatters.dart';
+import '../../core/currency.dart';
 import '../../core/security.dart';
 import '../database.dart';
 import 'activity_repository.dart';
@@ -28,14 +28,27 @@ class SupplierBalance {
   final int purchaseCount;
 
   /// Musbat — biz firmaga qarzmiz; manfiy — firma bizga qarz (ortiqcha to'lov,
-  /// kam kelgan yoki qaytarilgan tovar).
+  /// kam kelgan yoki qaytarilgan tovar). Firma valyutasida (so'm yoki sent).
   int get debt => purchased - paid;
+  String get currency => supplier.currency;
+  bool get isUsd => supplier.currency == Currency.usd.code;
 }
 
 /// Qarzlar oynasining umumiy ko'rsatkichlari.
 class DebtSummary {
-  const DebtSummary({this.totalDebt = 0, this.debtorCount = 0, this.totalAdvance = 0, this.paidToday = 0});
+  const DebtSummary({
+    this.totalDebt = 0,
+    this.debtorCount = 0,
+    this.totalAdvance = 0,
+    this.paidToday = 0,
+    this.totalDebtUsd = 0,
+    this.paidTodayUsd = 0,
+  });
+
+  /// So'm hisobli firmalarga qarz. Dollar firmalar — [totalDebtUsd] (sentda).
   final int totalDebt;
+  final int totalDebtUsd;
+  final int paidTodayUsd;
   final int debtorCount;
   final int totalAdvance;
   final int paidToday;
@@ -140,9 +153,16 @@ class SupplierRepository {
     String contactPerson = '',
     String address = '',
     String note = '',
+    String? currency,
   }) async {
     final n = name.trim();
     if (n.isEmpty) throw Exception('Firma nomini kiriting');
+    if (id != null && currency != null) {
+      final old = await byId(id);
+      if (old != null && old.currency != currency && await _hasDocs(id)) {
+        throw Exception("Hujjatlari bor firmaning hisob valyutasini o'zgartirib bo'lmaydi");
+      }
+    }
     final dup = await (db.select(
       db.suppliers,
     )..where((s) => s.isDeleted.equals(false) & s.name.lower().equals(n.toLowerCase()))).getSingleOrNull();
@@ -161,6 +181,7 @@ class SupplierRepository {
               contactPerson: Value(contactPerson.trim()),
               address: Value(address.trim()),
               note: Value(note.trim()),
+              currency: Value(currency ?? Currency.uzs.code),
               createdAt: now,
               updatedAt: now,
               deviceId: Value(dev),
@@ -176,6 +197,7 @@ class SupplierRepository {
         contactPerson: Value(contactPerson.trim()),
         address: Value(address.trim()),
         note: Value(note.trim()),
+        currency: currency == null ? const Value.absent() : Value(currency),
         updatedAt: Value(now),
         version: Value((old?.version ?? 0) + 1),
         deviceId: Value(dev),
@@ -191,6 +213,15 @@ class SupplierRepository {
       );
     }
     return id;
+  }
+
+  Future<bool> _hasDocs(String supplierId) async {
+    final r = await db.customSelect(
+      'SELECT 1 FROM supplier_purchases WHERE supplier_id = ?1 AND is_deleted = 0 '
+      'UNION ALL SELECT 1 FROM supplier_payments WHERE supplier_id = ?1 AND is_deleted = 0 LIMIT 1',
+      variables: [Variable.withString(supplierId)],
+    ).get();
+    return r.isNotEmpty;
   }
 
   /// Firmani o'chirish (yumshoq). Qarzi bo'lsa — ruxsat berilmaydi.
@@ -248,9 +279,9 @@ FROM suppliers s WHERE s.is_deleted = 0''';
         });
   }
 
-  /// Istalgan filialda firmalarga umumiy qarzimiz (monitoring uchun).
+  /// Istalgan filialda so'm hisobli firmalarga umumiy qarzimiz (monitoring uchun).
   Stream<int> watchTotalDebtOf(String branchId) =>
-      _watchBalances(branchId).map((list) => list.fold(0, (s, b) => b.debt > 0 ? s + b.debt : s));
+      _watchBalances(branchId).map((list) => list.fold(0, (s, b) => b.debt > 0 && !b.isUsd ? s + b.debt : s));
 
   Stream<DebtSummary> watchSummary() {
     final start = DateTime.now();
@@ -258,21 +289,34 @@ FROM suppliers s WHERE s.is_deleted = 0''';
     return watchBalances().asyncMap((list) async {
       final paidToday = await db
           .customSelect(
-            'SELECT COALESCE(SUM(amount), 0) AS s FROM supplier_payments '
-            'WHERE is_deleted = 0 AND amount > 0 AND paid_at >= ? AND branch_id = ?',
+            "SELECT COALESCE(SUM(CASE WHEN COALESCE(s.currency, 'UZS') <> 'USD' THEN m.amount ELSE 0 END), 0) AS s, "
+            "COALESCE(SUM(CASE WHEN s.currency = 'USD' THEN m.amount ELSE 0 END), 0) AS u "
+            'FROM supplier_payments m LEFT JOIN suppliers s ON s.id = m.supplier_id '
+            'WHERE m.is_deleted = 0 AND m.amount > 0 AND m.paid_at >= ? AND m.branch_id = ?',
             variables: [Variable.withInt(today), Variable.withString(branch.id)],
           )
           .getSingle();
-      var debt = 0, advance = 0, n = 0;
+      var debt = 0, debtUsd = 0, advance = 0, n = 0;
       for (final b in list) {
         if (b.debt > 0) {
-          debt += b.debt;
+          if (b.isUsd) {
+            debtUsd += b.debt;
+          } else {
+            debt += b.debt;
+          }
           n++;
-        } else {
+        } else if (!b.isUsd) {
           advance -= b.debt;
         }
       }
-      return DebtSummary(totalDebt: debt, debtorCount: n, totalAdvance: advance, paidToday: paidToday.read<int>('s'));
+      return DebtSummary(
+        totalDebt: debt,
+        totalDebtUsd: debtUsd,
+        debtorCount: n,
+        totalAdvance: advance,
+        paidToday: paidToday.read<int>('s'),
+        paidTodayUsd: paidToday.read<int>('u'),
+      );
     });
   }
 
@@ -402,6 +446,7 @@ FROM suppliers s WHERE s.is_deleted = 0''';
     String receivedBy = '',
     String signaturePath = '',
     String? id,
+    int usdRate = 0,
   }) async {
     final supplier = await byId(supplierId);
     if (supplier == null) throw Exception('Firma topilmadi');
@@ -433,6 +478,7 @@ FROM suppliers s WHERE s.is_deleted = 0''';
               updatedAt: now,
               deviceId: Value(dev),
               branchId: Value(branch.id),
+              usdRate: Value(usdRate),
             ),
           );
       for (final l in lines) {
@@ -474,7 +520,7 @@ FROM suppliers s WHERE s.is_deleted = 0''';
     });
     await activity?.log('supplier_purchase',
         details: '${supplier.name}: ${PurchaseKind.fromCode(kind.code).label}${docNo.trim().isEmpty ? '' : ' №${docNo.trim()}'}, '
-            '${Fmt.money(sum)}${paidNow > 0 ? ", to'landi ${Fmt.money(paidNow)}" : ''}',
+            '${Money.fmt(sum, supplier.currency)}${paidNow > 0 ? ", to'landi ${Money.fmt(paidNow, supplier.currency)}" : ''}',
         refId: pid);
     return pid;
   }
@@ -497,7 +543,7 @@ FROM suppliers s WHERE s.is_deleted = 0''';
     if (amount <= 0) throw Exception("To'lov summasini kiriting");
     final supplier = await byId(supplierId);
     await activity?.log('supplier_payment',
-        details: '${supplier?.name ?? ''}: ${refund ? 'firma qaytardi ' : ''}${Fmt.money(amount)}'
+        details: '${supplier?.name ?? ''}: ${refund ? 'firma qaytardi ' : ''}${Money.fmt(amount, supplier?.currency ?? 'UZS')}'
             '${receivedBy.trim().isEmpty ? '' : ', oldi: ${receivedBy.trim()}'}',
         refId: supplierId);
     return _insertPayment(

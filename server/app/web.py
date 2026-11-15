@@ -293,6 +293,7 @@ def overview(user: UserDep, session: SessionDep, date_from: DateFrom = None, dat
     cashiers: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "count": 0})
     by_branch: dict[str, int] = defaultdict(int)
     pay = {"cash": 0, "card": 0, "transfer": 0, "debt": 0}
+    usd_cash = 0.0
     total = count = profit = discount = refunds = refund_sum = 0
     sale_ids: set[str] = set()
     for s in _records(session, "sales", *_in_period(start, end)):
@@ -320,7 +321,10 @@ def overview(user: UserDep, session: SessionDep, date_from: DateFrom = None, dat
         c["total"] += t
         c["count"] += 1
         by_branch[s.get("branch_id") or DEFAULT_BRANCH_ID] += t
-        pay["cash"] += int(_num(s.get("paid_cash")) - _num(s.get("change_amount")))
+        # Dollar bilan to'lov naqdga kurs bo'yicha qo'shiladi (qaytim so'mda).
+        usd_sum = round(_num(s.get("paid_usd")) * _num(s.get("usd_rate")))
+        pay["cash"] += int(_num(s.get("paid_cash")) + usd_sum - _num(s.get("change_amount")))
+        usd_cash += _num(s.get("paid_usd"))
         pay["card"] += int(_num(s.get("paid_card")))
         pay["transfer"] += int(_num(s.get("paid_transfer")))
         pay["debt"] += int(_num(s.get("debt_amount")))
@@ -342,6 +346,7 @@ def overview(user: UserDep, session: SessionDep, date_from: DateFrom = None, dat
         "refunds": refunds,
         "refund_sum": refund_sum,
         "payments": pay,
+        "usd_cash": round(usd_cash, 2),
         "days": [{"date": k, **v} for k, v in sorted(days.items())],
         "cashiers": sorted(({"name": k, **v} for k, v in cashiers.items()), key=lambda r: -r["total"]),
         "by_branch": dict(by_branch),
@@ -455,10 +460,12 @@ def debts(user: UserDep, session: SessionDep, branch_id: BranchQ = None) -> dict
     for p in _records(session, "supplier_payments"):
         if _in(p, branches):
             sup[p.get("supplier_id") or ""]["paid"] += int(_num(p.get("amount")))
+    # Dollar hisobli firma/mijoz summalari sentda saqlanadi ("currency": "USD").
     suppliers = []
     for s in _records(session, "suppliers"):
         b = sup.get(s["id"], {"purchased": 0, "paid": 0})
         suppliers.append({"name": s.get("name") or "", "phone": s.get("phone") or "",
+                          "currency": s.get("currency") or "UZS",
                           **b, "debt": b["purchased"] - b["paid"]})
     suppliers.sort(key=lambda r: (-r["debt"], r["name"].lower()))
 
@@ -471,14 +478,18 @@ def debts(user: UserDep, session: SessionDep, branch_id: BranchQ = None) -> dict
     customers = []
     for c in _records(session, "customers"):
         b = cus.get(c["id"], {"debt": 0, "last_at": 0})
-        customers.append({"name": c.get("name") or "", "phone": c.get("phone") or "", **b})
+        customers.append({"name": c.get("name") or "", "phone": c.get("phone") or "",
+                          "currency": c.get("currency") or "UZS", **b})
     customers.sort(key=lambda r: (-r["debt"], r["name"].lower()))
     return {
         "suppliers": suppliers,
         "customers": customers,
-        "supplier_debt": sum(r["debt"] for r in suppliers if r["debt"] > 0),
-        "supplier_advance": -sum(r["debt"] for r in suppliers if r["debt"] < 0),
-        "customer_debt": sum(r["debt"] for r in customers if r["debt"] > 0),
+        "supplier_debt": sum(r["debt"] for r in suppliers if r["debt"] > 0 and r["currency"] != "USD"),
+        "supplier_advance": -sum(r["debt"] for r in suppliers if r["debt"] < 0 and r["currency"] != "USD"),
+        "customer_debt": sum(r["debt"] for r in customers if r["debt"] > 0 and r["currency"] != "USD"),
+        # Sentda.
+        "supplier_debt_usd": sum(r["debt"] for r in suppliers if r["debt"] > 0 and r["currency"] == "USD"),
+        "customer_debt_usd": sum(r["debt"] for r in customers if r["debt"] > 0 and r["currency"] == "USD"),
     }
 
 

@@ -175,6 +175,7 @@ class SyncEntities {
   static const supplierPayments = 'supplier_payments';
   static const customers = 'customers';
   static const customerDebts = 'customer_debts';
+  static const currencyRates = 'currency_rates';
 
   static const all = [
     branches,
@@ -191,5 +192,6 @@ class SyncEntities {
     supplierPayments,
     customers,
     customerDebts,
+    currencyRates,
   ];
 }

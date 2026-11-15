@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 
 import '../../core/branch.dart';
 import '../../core/constants.dart';
+import '../../core/currency.dart';
 import '../../core/formatters.dart';
 import '../../core/security.dart';
 import '../database.dart';
@@ -13,14 +14,25 @@ class CustomerBalance {
   final Customer customer;
 
   /// Musbat — mijoz bizga qarz; manfiy — oldindan to'lagan (avans).
+  /// Mijoz valyutasida: so'm yoki sent ([currency]).
   final int debt;
+  String get currency => customer.currency;
   final int? lastAt;
   final int saleCount;
 }
 
 class CustomerDebtSummary {
-  const CustomerDebtSummary({this.totalDebt = 0, this.debtorCount = 0, this.paidToday = 0, this.debtToday = 0});
+  const CustomerDebtSummary({
+    this.totalDebt = 0,
+    this.debtorCount = 0,
+    this.paidToday = 0,
+    this.debtToday = 0,
+    this.totalDebtUsd = 0,
+  });
+
+  /// So'mdagi qarzlar (so'm hisobli mijozlar). Dollar qarzlar — [totalDebtUsd] (sentda).
   final int totalDebt;
+  final int totalDebtUsd;
   final int debtorCount;
   final int paidToday;
   final int debtToday;
@@ -66,9 +78,22 @@ class CustomerRepository {
   Stream<Customer?> watchCustomer(String id) =>
       (db.select(db.customers)..where((c) => c.id.equals(id))).watchSingleOrNull();
 
-  Future<Customer> save({String? id, required String name, String phone = '', String address = '', String note = ''}) async {
+  Future<Customer> save({
+    String? id,
+    required String name,
+    String phone = '',
+    String address = '',
+    String note = '',
+    String? currency,
+  }) async {
     final n = name.trim();
     if (n.isEmpty) throw CustomerException('Mijoz ismini kiriting');
+    if (id != null && currency != null) {
+      final old = await (db.select(db.customers)..where((c) => c.id.equals(id))).getSingleOrNull();
+      if (old != null && old.currency != currency && await hasEntries(id)) {
+        throw CustomerException("Daftarida yozuv bor mijozning valyutasini o'zgartirib bo'lmaydi");
+      }
+    }
     final now = Ids.nowMs();
     final dev = await deviceId();
     final cid = id ?? Ids.newId();
@@ -79,6 +104,7 @@ class CustomerRepository {
             phone: Value(phone.trim()),
             address: Value(address.trim()),
             note: Value(note.trim()),
+            currency: Value(currency ?? Currency.uzs.code),
             createdAt: now,
             updatedAt: now,
             deviceId: Value(dev),
@@ -90,6 +116,7 @@ class CustomerRepository {
         phone: Value(phone.trim()),
         address: Value(address.trim()),
         note: Value(note.trim()),
+        currency: currency == null ? const Value.absent() : Value(currency),
         updatedAt: Value(now),
         deviceId: Value(dev),
         dirty: const Value(true),
@@ -112,6 +139,15 @@ class CustomerRepository {
   // --------------------------------------------------------------------------
   //  Qarz va to'lovlar
   // --------------------------------------------------------------------------
+
+  /// Mijoz daftarida (istalgan filialda) yozuv bormi.
+  Future<bool> hasEntries(String customerId) async {
+    final r = await db.customSelect(
+      'SELECT 1 FROM customer_debts WHERE customer_id = ? AND is_deleted = 0 LIMIT 1',
+      variables: [Variable.withString(customerId)],
+    ).get();
+    return r.isNotEmpty;
+  }
 
   Future<int> debtOf(String customerId, {String? branchId}) async {
     final r = await db.customSelect(
@@ -140,6 +176,7 @@ class CustomerRepository {
     String note = '',
     User? user,
     String? branchId,
+    int usdRate = 0,
   }) async {
     final now = Ids.nowMs();
     final e = CustomerDebt(
@@ -159,24 +196,37 @@ class CustomerRepository {
       deviceId: await deviceId(),
       isDeleted: false,
       dirty: true,
+      usdRate: usdRate,
     );
     await db.into(db.customerDebts).insert(e);
     return e;
   }
 
-  /// Mijozdan qarz to'lovini qabul qilish.
-  Future<void> addPayment(String customerId, int amount, {String method = 'cash', String note = '', User? user}) async {
+  /// Mijozdan qarz to'lovini qabul qilish. [amount] — mijoz valyutasida
+  /// (so'm yoki sent). Dollar qarzga so'm bilan to'lansa — chaqiruvchi kurs
+  /// bo'yicha o'tkazadi va [note] ga yozadi.
+  Future<void> addPayment(String customerId, int amount,
+      {String method = 'cash', String note = '', User? user, int usdRate = 0}) async {
     if (amount <= 0) throw CustomerException("To'lov summasi 0 dan katta bo'lishi kerak");
     await addEntry(
-        customerId: customerId, kind: CustomerDebtKind.payment, amount: -amount, method: method, note: note, user: user);
-    await activity?.log('customer_payment', details: '${await _name(customerId)}: ${Fmt.money(amount)}', refId: customerId, user: user);
+        customerId: customerId,
+        kind: CustomerDebtKind.payment,
+        amount: -amount,
+        method: method,
+        note: note,
+        user: user,
+        usdRate: usdRate);
+    final (name, cur) = await _nameCur(customerId);
+    await activity?.log('customer_payment', details: '$name: ${Money.fmt(amount, cur)}', refId: customerId, user: user);
   }
 
-  /// Qo'lda qarz yozish (masalan, daftardagi eski qarzni kiritish).
-  Future<void> addManualDebt(String customerId, int amount, {String note = '', User? user}) async {
+  /// Qo'lda qarz yozish (masalan, daftardagi eski qarzni kiritish). [amount] — mijoz valyutasida.
+  Future<void> addManualDebt(String customerId, int amount, {String note = '', User? user, int usdRate = 0}) async {
     if (amount <= 0) throw CustomerException("Qarz summasi 0 dan katta bo'lishi kerak");
-    await addEntry(customerId: customerId, kind: CustomerDebtKind.manual, amount: amount, note: note, user: user);
-    await activity?.log('customer_debt', details: '${await _name(customerId)}: ${Fmt.money(amount)}', refId: customerId, user: user);
+    await addEntry(
+        customerId: customerId, kind: CustomerDebtKind.manual, amount: amount, note: note, user: user, usdRate: usdRate);
+    final (name, cur) = await _nameCur(customerId);
+    await activity?.log('customer_debt', details: '$name: ${Money.fmt(amount, cur)}', refId: customerId, user: user);
   }
 
   /// Xato kiritilgan to'lov yoki qo'lda yozilgan qarzni bekor qilish.
@@ -194,8 +244,10 @@ class CustomerRepository {
     ));
   }
 
-  Future<String> _name(String id) async =>
-      (await (db.select(db.customers)..where((c) => c.id.equals(id))).getSingleOrNull())?.name ?? '';
+  Future<(String, String)> _nameCur(String id) async {
+    final c = await (db.select(db.customers)..where((c) => c.id.equals(id))).getSingleOrNull();
+    return (c?.name ?? '', c?.currency ?? Currency.uzs.code);
+  }
 
   /// Mijoz daftari: eng yangisi tepada, har qatordan keyingi qoldiq bilan.
   Stream<List<CustomerLedgerEntry>> watchLedger(String customerId) => watchInBranch(
@@ -244,19 +296,25 @@ class CustomerRepository {
   /// Istalgan filialning nasiya ko'rsatkichlari (monitoring uchun).
   Stream<CustomerDebtSummary> summaryOf(String b) {
     final today = DayRange.today();
+    // Dollar hisobli mijozlarning daftari sentda: so'm ko'rsatkichlariga
+    // qo'shilmaydi. Bugungi nasiya savdo esa chekdan (so'mda) olinadi.
+    const usdIds = "(SELECT id FROM customers WHERE currency = 'USD')";
     return db.customSelect(
-      'SELECT COALESCE(SUM(CASE WHEN debt > 0 THEN debt ELSE 0 END), 0) total, '
+      "SELECT COALESCE(SUM(CASE WHEN debt > 0 AND cur <> 'USD' THEN debt ELSE 0 END), 0) total, "
+      "COALESCE(SUM(CASE WHEN debt > 0 AND cur = 'USD' THEN debt ELSE 0 END), 0) total_usd, "
       'COALESCE(SUM(CASE WHEN debt > 0 THEN 1 ELSE 0 END), 0) debtors, '
       '(SELECT COALESCE(-SUM(amount), 0) FROM customer_debts WHERE branch_id = ?1 AND is_deleted = 0 '
-      "AND kind = 'payment' AND created_at >= ?2 AND created_at < ?3) paid_today, "
-      '(SELECT COALESCE(SUM(amount), 0) FROM customer_debts WHERE branch_id = ?1 AND is_deleted = 0 '
-      "AND kind = 'sale' AND created_at >= ?2 AND created_at < ?3) debt_today "
-      'FROM (SELECT customer_id, SUM(amount) debt FROM customer_debts WHERE branch_id = ?1 AND is_deleted = 0 '
-      'GROUP BY customer_id)',
+      "AND kind = 'payment' AND created_at >= ?2 AND created_at < ?3 AND customer_id NOT IN $usdIds) paid_today, "
+      '(SELECT COALESCE(SUM(debt_amount), 0) FROM sales WHERE branch_id = ?1 AND is_deleted = 0 '
+      "AND status = 'completed' AND created_at >= ?2 AND created_at < ?3) debt_today "
+      "FROM (SELECT d.customer_id, SUM(d.amount) debt, COALESCE(MAX(c.currency), 'UZS') cur FROM customer_debts d "
+      'LEFT JOIN customers c ON c.id = d.customer_id WHERE d.branch_id = ?1 AND d.is_deleted = 0 '
+      'GROUP BY d.customer_id)',
       variables: [Variable.withString(b), Variable.withInt(today.fromMs), Variable.withInt(today.toMs)],
-      readsFrom: {db.customerDebts},
+      readsFrom: {db.customerDebts, db.customers, db.sales},
     ).watchSingle().map((r) => CustomerDebtSummary(
           totalDebt: r.read<int>('total'),
+          totalDebtUsd: r.read<int>('total_usd'),
           debtorCount: r.read<int>('debtors'),
           paidToday: r.read<int>('paid_today'),
           debtToday: r.read<int>('debt_today'),

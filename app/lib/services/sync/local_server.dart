@@ -58,7 +58,10 @@ Future<void> startLocalServer() async {
 }
 
 /// Telefonni ulash va internet sahifasi (QR, Tailscale ustasi) — brauzerda.
-Future<void> openServerPanel() async {
+Future<void> openServerPanel([String page = 'ulash']) async {
   if (kIsWeb || !Platform.isWindows) return;
-  await Process.start('explorer.exe', ['http://localhost:8000/ulash'], mode: ProcessStartMode.detached);
+  await Process.start('explorer.exe', ['http://localhost:8000/$page'], mode: ProcessStartMode.detached);
 }
+
+/// Bazaning soatlik zaxira nusxalari (papka, Google Drive, tiklash).
+Future<void> openBackupPage() => openServerPanel('nusxalar');

@@ -236,6 +236,32 @@ def products(user: UserDep, session: SessionDep, branch_id: Annotated[str, Query
     return {"products": rows, "categories": categories}
 
 
+def usd_rate(session: Session) -> int:
+    """Joriy dollar kursi (ilovalar yozgan eng oxirgi kurs), 0 — noma'lum."""
+    best = None
+    for r in _records(session, "currency_rates"):
+        if (r.get("currency") or "USD") != "USD" or _num(r.get("rate")) <= 0:
+            continue
+        key = (int(_num(r.get("created_at"))), str(r.get("id") or ""))
+        if best is None or key > best[0]:
+            best = (key, _num(r.get("rate")))
+    return round(best[1]) if best else 0
+
+
+def _is_usd(customer: dict | None) -> bool:
+    return bool(customer) and (customer.get("currency") or "UZS") == "USD"
+
+
+def _to_customer_amount(session: Session, customer: dict, sum_amount: int) -> tuple[int, int]:
+    """So'm -> mijoz valyutasi. Dollar qarzli mijoz daftari sentda."""
+    if not _is_usd(customer):
+        return sum_amount, 0
+    rate = usd_rate(session)
+    if rate <= 0:
+        raise HTTPException(status_code=422, detail="Mijoz qarzi dollarda — avval kassada dollar kursini kiriting")
+    return round(sum_amount * 100 / rate), rate
+
+
 def _customer_debts(session: Session, branch_id: str) -> dict[str, int]:
     out: dict[str, int] = {}
     for d in _records(session, "customer_debts"):
@@ -248,11 +274,17 @@ def _customer_debts(session: Session, branch_id: str) -> dict[str, int]:
 def customers(user: UserDep, session: SessionDep, branch_id: Annotated[str, Query()]) -> dict:
     _need(user, branch_id)
     debts = _customer_debts(session, branch_id)
-    rows = [
-        {"id": c["id"], "name": c.get("name") or "", "phone": c.get("phone") or "", "debt": debts.get(c["id"], 0)}
-        for c in _records(session, "customers")
-        if c.get("is_active") not in (False, 0)
-    ]
+    rate = usd_rate(session)
+    rows = []
+    for c in _records(session, "customers"):
+        if c.get("is_active") in (False, 0):
+            continue
+        debt = debts.get(c["id"], 0)
+        row = {"id": c["id"], "name": c.get("name") or "", "phone": c.get("phone") or "", "debt": debt}
+        if _is_usd(c):
+            # Kassa sahifasi so'mda ko'rsatadi: dollar qarz joriy kurs bilan.
+            row.update(currency="USD", debt_usd=debt / 100, debt=round(debt * rate / 100))
+        rows.append(row)
     rows.sort(key=lambda r: (-r["debt"], r["name"].lower()))
     return {"customers": rows}
 
@@ -361,6 +393,7 @@ def sale(body: SaleBody, user: UserDep, session: SessionDep) -> dict:
         if rec is None or rec.deleted:
             raise HTTPException(status_code=422, detail="Nasiya uchun mijozni tanlang")
         customer = rec.data
+        _to_customer_amount(session, customer, body.debt)  # kurs yo'q bo'lsa — savdodan oldin xato
     covered = body.paid_cash + body.paid_card + body.paid_transfer + body.debt
     if covered < total:
         raise HTTPException(status_code=422, detail="To'lov yetarli emas")
@@ -404,10 +437,11 @@ def sale(body: SaleBody, user: UserDep, session: SessionDep) -> dict:
                 "user_id": user.id, "user_name": user.name, "branch_id": body.branch_id, **_base(now),
             }))
         if customer:
+            amount, rate = _to_customer_amount(session, customer, body.debt)
             records.append(("customer_debts", {
-                "id": _new_id(), "customer_id": customer["id"], "kind": "sale", "amount": body.debt,
+                "id": _new_id(), "customer_id": customer["id"], "kind": "sale", "amount": amount,
                 "sale_id": sale_id, "method": "", "note": receipt_no, "user_id": user.id, "user_name": user.name,
-                "branch_id": body.branch_id, **_base(now),
+                "branch_id": body.branch_id, "usd_rate": rate, **_base(now),
             }))
         _write(session, records)
     return _sale_out(sale_row, items)
@@ -492,9 +526,14 @@ def refund(body: RefundBody, user: UserDep, session: SessionDep) -> dict:
                 "note": note, "user_id": user.id, "user_name": user.name, "branch_id": branch_id, **_base(now),
             }))
         if int(_num(s.get("debt_amount"))) > 0 and s.get("customer_id"):
+            # Daftarga aynan qancha yozilgan bo'lsa (dollar qarzda — sent), shuncha ayriladi.
+            written = [d for d in _records(session, "customer_debts")
+                       if d.get("sale_id") == s["id"] and d.get("kind") == "sale"]
+            amount = sum(int(_num(d.get("amount"))) for d in written) if written else int(_num(s.get("debt_amount")))
             records.append(("customer_debts", {
                 "id": _new_id(), "customer_id": s["customer_id"], "kind": "refund",
-                "amount": -int(_num(s.get("debt_amount"))), "sale_id": s["id"], "method": "",
+                "usd_rate": int(_num(written[0].get("usd_rate"))) if written else 0,
+                "amount": -amount, "sale_id": s["id"], "method": "",
                 "note": s.get("receipt_no") or "", "user_id": user.id, "user_name": user.name,
                 "branch_id": branch_id, **_base(now),
             }))
@@ -518,19 +557,27 @@ def customer_payment(body: DebtPaymentBody, user: UserDep, session: SessionDep) 
     rec = session.get(SyncRecord, ("customers", body.customer_id))
     if rec is None or rec.deleted:
         raise HTTPException(status_code=404, detail="Mijoz topilmadi")
+    # Kassa so'mda qabul qiladi; dollar qarzli mijozga kurs bo'yicha dollarga o'tadi.
+    amount, rate = _to_customer_amount(session, rec.data, body.amount)
+    note = body.note.strip()
+    if rate:
+        note = ", ".join(x for x in (f"{_money(body.amount)}", f"kurs {rate}", note) if x)
     with _LOCK:
         now = sync.now_ms()
         _write(session, [
             ("customer_debts", {
-                "id": _new_id(), "customer_id": body.customer_id, "kind": "payment", "amount": -body.amount,
+                "id": _new_id(), "customer_id": body.customer_id, "kind": "payment", "amount": -amount,
                 "sale_id": "", "method": body.method if body.method in ("cash", "card", "transfer") else "cash",
-                "note": body.note.strip(), "user_id": user.id, "user_name": user.name, "branch_id": body.branch_id,
-                **_base(now),
+                "note": note, "user_id": user.id, "user_name": user.name, "branch_id": body.branch_id,
+                "usd_rate": rate, **_base(now),
             }),
             _audit(user, "customer_payment", f"{rec.data.get('name') or ''}: {_money(body.amount)}",
                    branch_id=body.branch_id, ref_id=body.customer_id),
         ])
-    return {"debt": _customer_debts(session, body.branch_id).get(body.customer_id, 0)}
+    debt = _customer_debts(session, body.branch_id).get(body.customer_id, 0)
+    if rate:
+        return {"debt": round(debt * rate / 100), "debt_usd": debt / 100, "currency": "USD"}
+    return {"debt": debt}
 
 
 # ---------------------------------------------------------------------------

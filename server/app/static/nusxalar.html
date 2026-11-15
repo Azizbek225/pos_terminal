@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zaxira nusxalar</title>
+<style>
+  :root { --bg: #f4f6f8; --card: #fff; --text: #1d2329; --muted: #6b7682; --line: #e3e7eb; --accent: #1565c0; --bad: #c62828; --ok: #2e7d32; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #12161a; --card: #1b2127; --text: #e8ecef; --muted: #9aa5b1; --line: #2c343c; --accent: #64a8f0; --bad: #ef6c6c; --ok: #66bb6a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  main { max-width: 820px; margin: 0 auto; padding: 24px 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin-bottom: 18px; }
+  h1 { margin: 0 0 6px; }
+  h2 { margin: 0 0 10px; font-size: 19px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .bad { color: var(--bad); }
+  .ok { color: var(--ok); }
+  a { color: var(--accent); }
+  label { display: block; font-weight: 600; margin: 12px 0 4px; }
+  input[type=text] { width: 100%; font: inherit; padding: 9px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); color: var(--text); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  button { font: inherit; font-weight: 600; cursor: pointer; border: 0; border-radius: 9px; padding: 9px 16px; background: var(--accent); color: #fff; }
+  button.sec { background: transparent; color: var(--accent); border: 1px solid var(--line); }
+  button.small { padding: 4px 10px; font-size: 14px; }
+  button:disabled { opacity: .5; cursor: default; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); }
+  td.n { text-align: right; white-space: nowrap; }
+  .tag { font-size: 12px; padding: 1px 7px; border-radius: 6px; background: var(--bg); color: var(--muted); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Zaxira nusxalar</h1>
+  <p class="muted">Baza har soatda (o'zgarish bo'lsa) ZIP qilib saqlanadi. Oxirgi 24 ta, har kunning oxirgisi (30 kun)
+    va har oyning oxirgisi (12 oy) qoladi, eskilari o'zi o'chadi. <a href="/panel">Hisobot paneli</a></p>
+
+  <div class="card" id="state"><p class="muted">Yuklanmoqda...</p></div>
+
+  <div class="card">
+    <h2>Qayerga saqlansin</h2>
+    <label for="dir">Kompyuterdagi papka</label>
+    <input type="text" id="dir" placeholder="">
+    <p class="muted" id="dirHint"></p>
+    <label for="drive">Google Drive papkasi (ixtiyoriy)</label>
+    <input type="text" id="drive" placeholder="Bo'sh — Google Drive'ga saqlanmaydi">
+    <p class="muted">Kompyuterga <a href="https://www.google.com/drive/download/" target="_blank" rel="noopener">Google Drive for desktop</a>
+      o'rnating va Google hisobingiz bilan kiring. Shu papkaga tushgan nusxalarni Drive o'zi bulutga yuklaydi —
+      kompyuter buzilsa ham nusxa saqlanib qoladi.
+      <span id="driveSuggest"></span></p>
+    <div class="row">
+      <button id="save">Saqlash</button>
+      <span id="saveMsg" class="muted"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="margin:0 0 10px;justify-content:space-between">
+      <h2 style="margin:0">Nusxalar</h2>
+      <button id="now">Hozir nusxa olish</button>
+    </div>
+    <div id="list"></div>
+    <p class="muted">"Shu nusxaga qaytarish" — baza tanlangan vaqtdagi holatiga qaytadi (oldin hozirgi holatdan ham nusxa olinadi).
+      Kassa va telefonlar keyingi sinxronlashda o'zidagi yozuvlarni serverga qayta yuboradi, shuning uchun ulardagi
+      yangi savdolar yo'qolmaydi. Bu asosan kompyuter yoki baza buzilganda kerak bo'ladi.</p>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const mb = (n) => n >= 1048576 ? (n / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || ('Xato ' + r.status));
+  return data;
+}
+
+let st = null;
+
+function render() {
+  if (!st.supported) {
+    $('state').innerHTML = '<p class="bad">Server PostgreSQL bilan ishlayapti — bu sahifa faqat PosServer (SQLite) uchun.</p>';
+    return;
+  }
+  $('state').innerHTML = `
+    <p style="margin:0">Oxirgi nusxa: <b>${esc(st.last_at || 'hali olinmagan')}</b>
+      ${st.auto ? '' : ' · <span class="bad">avtomatik nusxa o\'chirilgan</span>'}</p>
+    <p class="muted" style="margin:4px 0 0">Baza hajmi: ${mb(st.db_size)} ·
+      kompyuterda ${st.local.length} ta nusxa (${mb(st.local_size)})
+      ${st.drive_dir ? ` · Google Drive'da ${st.drive.length} ta (${mb(st.drive_size)})` : ''}</p>
+    ${st.error ? `<p class="bad" style="margin:6px 0 0">Xato: ${esc(st.error)}</p>` : ''}
+    ${st.drive_error ? `<p class="bad" style="margin:6px 0 0">Google Drive: ${esc(st.drive_error)}</p>` : ''}`;
+  if (document.activeElement !== $('dir')) $('dir').value = st.dir;
+  if (document.activeElement !== $('drive')) $('drive').value = st.drive_dir;
+  $('dirHint').textContent = 'Standart: ' + st.default_dir;
+  $('driveSuggest').innerHTML = !st.drive_dir && st.drive_suggest
+    ? `<br>Bu kompyuterda Google Drive topildi: <a href="#" id="useDrive">${esc(st.drive_suggest)}</a> — bosing, keyin "Saqlash".` : '';
+  if ($('useDrive')) $('useDrive').onclick = (e) => { e.preventDefault(); $('drive').value = st.drive_suggest; };
+
+  const files = [...st.local, ...st.drive.filter((f) => !st.local.some((l) => l.name === f.name))];
+  files.sort((a, b) => (a.name < b.name ? 1 : -1));
+  const inDrive = new Set(st.drive.map((f) => f.name));
+  $('list').innerHTML = files.length ? `<table><tr><th>Vaqt</th><th></th><th class="n">Hajmi</th><th></th></tr>
+    ${files.map((f) => `<tr>
+      <td>${esc(f.time)}</td>
+      <td>${f.before_restore ? '<span class="tag">tiklashdan oldin</span> ' : ''}${f.where === 'local' && inDrive.has(f.name) ? '<span class="tag">Drive</span>' : f.where === 'drive' ? '<span class="tag">faqat Drive</span>' : ''}</td>
+      <td class="n">${mb(f.size)}</td>
+      <td class="n"><a href="/api/backup/file?name=${encodeURIComponent(f.name)}&where=${f.where}">Yuklab olish</a>
+        <button class="sec small" data-restore="${esc(f.name)}" data-where="${f.where}">Shu nusxaga qaytarish</button></td>
+    </tr>`).join('')}</table>` : '<p class="muted">Hali nusxa yo\'q. "Hozir nusxa olish" ni bosing.</p>';
+  document.querySelectorAll('[data-restore]').forEach((b) => { b.onclick = () => restore(b.dataset.restore, b.dataset.where, b); });
+}
+
+async function load() {
+  try {
+    st = await api('/api/backup');
+    render();
+  } catch (e) {
+    $('state').innerHTML = `<p class="bad">${esc(e.message)}</p>`;
+  }
+}
+
+$('save').onclick = async () => {
+  $('saveMsg').textContent = 'Saqlanmoqda...';
+  try {
+    st = await api('/api/backup/settings', { dir: $('dir').value, drive_dir: $('drive').value });
+    $('saveMsg').innerHTML = '<span class="ok">Saqlandi</span>';
+    render();
+  } catch (e) {
+    $('saveMsg').innerHTML = `<span class="bad">${esc(e.message)}</span>`;
+  }
+};
+
+$('now').onclick = async () => {
+  $('now').disabled = true;
+  $('now').textContent = 'Olinmoqda...';
+  try {
+    const r = await api('/api/backup/now', {});
+    st = r.status;
+    render();
+  } catch (e) {
+    alert(e.message);
+  } finally {
+    $('now').disabled = false;
+    $('now').textContent = 'Hozir nusxa olish';
+  }
+};
+
+async function restore(name, where, btn) {
+  const f = [...st.local, ...st.drive].find((x) => x.name === name);
+  if (!confirm(`Baza ${f ? f.time : name} holatiga qaytarilsinmi?\n\nHozirgi holatdan oldin nusxa olinadi.`)) return;
+  btn.disabled = true;
+  btn.textContent = 'Qaytarilmoqda...';
+  try {
+    await api('/api/backup/restore', { name, where });
+    alert("Tayyor. Baza tanlangan nusxaga qaytarildi. Kassa va telefonlar keyingi sinxronlashda yangilanadi.");
+  } catch (e) {
+    alert(e.message);
+  }
+  load();
+}
+
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants.dart';
+import '../../core/currency.dart';
 import '../../core/formatters.dart';
 import '../../data/repositories/customer_repository.dart';
 import '../../state/providers.dart';
@@ -43,7 +44,10 @@ class _CustomerDebtsTabState extends ConsumerState<CustomerDebtsTab> {
         value: Fmt.money(summary.totalDebt),
         icon: Icons.menu_book_outlined,
         color: scheme.error,
-        subtitle: '${summary.debtorCount} ta mijoz',
+        subtitle: [
+          if (summary.totalDebtUsd > 0) '+ ${Money.usd(summary.totalDebtUsd / 100)}',
+          '${summary.debtorCount} ta mijoz',
+        ].join(' · '),
         compact: narrow,
       ),
       StatTile(
@@ -159,7 +163,7 @@ class _CustomerTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              balance.debt == 0 ? '0' : Fmt.money(balance.debt.abs()),
+              balance.debt == 0 ? '0' : Money.fmt(balance.debt.abs(), balance.currency),
               style: theme.textTheme.titleMedium
                   ?.copyWith(color: debtColor(context, balance.debt), fontWeight: FontWeight.bold),
             ),
@@ -224,9 +228,12 @@ class CustomerDetailPage extends ConsumerWidget {
               if (customer.address.isNotEmpty) Text(customer.address),
               if (customer.note.isNotEmpty) Text(customer.note, style: theme.textTheme.bodySmall),
               const SizedBox(height: 8),
-              Text(debt > 0 ? 'Qarzi' : (debt < 0 ? 'Avans (oldindan to\'lagan)' : 'Qarzi yo\'q')),
+              Text([
+                debt > 0 ? 'Qarzi' : (debt < 0 ? 'Avans (oldindan to\'lagan)' : 'Qarzi yo\'q'),
+                if (customer.currency == Currency.usd.code) '(dollarda)',
+              ].join(' ')),
               Text(
-                Fmt.money(debt.abs()),
+                Money.fmt(debt.abs(), customer.currency),
                 style: theme.textTheme.headlineMedium
                     ?.copyWith(color: debtColor(context, debt), fontWeight: FontWeight.bold),
               ),
@@ -256,7 +263,7 @@ class CustomerDetailPage extends ConsumerWidget {
             child: Column(children: [
               for (var i = 0; i < ledger.length; i++) ...[
                 if (i > 0) const Divider(height: 1),
-                _LedgerTile(entry: ledger[i]),
+                _LedgerTile(entry: ledger[i], currency: customer.currency),
               ],
             ]),
           ),
@@ -266,8 +273,9 @@ class CustomerDetailPage extends ConsumerWidget {
 }
 
 class _LedgerTile extends ConsumerWidget {
-  const _LedgerTile({required this.entry});
+  const _LedgerTile({required this.entry, required this.currency});
   final CustomerLedgerEntry entry;
+  final String currency;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -279,6 +287,7 @@ class _LedgerTile extends ConsumerWidget {
       if (entry.receiptNo.isNotEmpty) 'chek ${entry.receiptNo}',
       if (e.method.isNotEmpty) PaymentType.fromCode(e.method).label,
       if (e.note.isNotEmpty && e.note != entry.receiptNo) e.note,
+      if (currency == Currency.usd.code && e.usdRate > 0) 'kurs ${Fmt.money(e.usdRate, suffix: false)}',
       if (e.userName.isNotEmpty) e.userName,
     ].join(' · ');
     final deletable = entry.kind == CustomerDebtKind.payment || entry.kind == CustomerDebtKind.manual;
@@ -295,16 +304,16 @@ class _LedgerTile extends ConsumerWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text('${plus ? '+' : '−'}${Fmt.money(e.amount.abs())}',
+          Text('${plus ? '+' : '−'}${Money.fmt(e.amount.abs(), currency)}',
               style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-          Text('qoldiq: ${Fmt.money(entry.balance)}', style: Theme.of(context).textTheme.bodySmall),
+          Text('qoldiq: ${Money.fmt(entry.balance, currency)}', style: Theme.of(context).textTheme.bodySmall),
         ],
       ),
       onLongPress: !deletable
           ? null
           : () async {
               if (!await confirmDialog(context, 'Yozuvni bekor qilish',
-                  "${entry.kind.label} (${Fmt.money(e.amount.abs())}) bekor qilinsinmi?", danger: true)) {
+                  "${entry.kind.label} (${Money.fmt(e.amount.abs(), currency)}) bekor qilinsinmi?", danger: true)) {
                 return;
               }
               await ref.read(customerRepoProvider).deleteEntry(e.id);

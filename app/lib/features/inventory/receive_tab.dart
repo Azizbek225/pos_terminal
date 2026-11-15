@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants.dart';
+import '../../core/currency.dart';
 import '../../core/formatters.dart';
 import '../../data/database.dart';
 import '../../data/repositories/stock_repository.dart';
@@ -15,10 +16,15 @@ import '../suppliers/supplier_widgets.dart';
 import 'product_form_page.dart';
 
 class _ReceiveLine {
-  _ReceiveLine(this.product, this.qty, this.cost);
+  _ReceiveLine(this.product, this.qty, this.cost, this.costUsd);
   Product product;
   double qty;
   int cost;
+
+  /// Dollar firmadan kirimda — kirim narxi dollarda.
+  double costUsd;
+
+  int get centsTotal => (qty * costUsd * 100).round();
 }
 
 /// Kirim hujjati: tovarlarni skanerlab (USB/Bluetooth skaner yoki kamera)
@@ -41,6 +47,18 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
   bool _updatePrices = true;
   bool _saving = false;
 
+  /// Tanlangan firma dollar hisobidami.
+  bool get _usd {
+    if (_supplierId == null) return false;
+    final b = (ref.read(supplierBalancesProvider).value ?? const []).where((b) => b.supplier.id == _supplierId).firstOrNull;
+    return b?.isUsd ?? false;
+  }
+
+  /// Hujjat summasi firma valyutasida (so'm yoki sent).
+  int _docTotal(bool usd) => usd
+      ? _lines.fold<int>(0, (s, l) => s + l.centsTotal)
+      : _lines.fold<int>(0, (s, l) => s + (l.qty * l.cost).round());
+
   @override
   bool get wantKeepAlive => true;
 
@@ -59,7 +77,7 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
         final l = _lines.removeAt(i);
         _lines.insert(0, l);
       } else {
-        _lines.insert(0, _ReceiveLine(p, 1, p.purchasePrice));
+        _lines.insert(0, _ReceiveLine(p, 1, p.purchasePrice, p.purchasePriceUsd));
       }
     });
   }
@@ -91,15 +109,33 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
 
   Future<void> _save() async {
     if (_lines.isEmpty) return;
-    final total = _lines.fold<int>(0, (s, l) => s + (l.qty * l.cost).round());
     final supplier = _supplierId == null ? null : await ref.read(supplierRepoProvider).byId(_supplierId!);
+    final usd = supplier?.currency == Currency.usd.code;
+    final rate = ref.read(usdRateProvider);
+    if (usd && rate <= 0) {
+      if (mounted) showMessage(context, 'Dollar kursi kiritilmagan — yuqoridagi kurs tugmasidan kiriting', error: true);
+      return;
+    }
+    // Dollar firma: ombor tannarxi so'mda, bugungi kurs bilan.
+    if (usd) {
+      for (final l in _lines) {
+        l.cost = (l.costUsd * rate).round();
+      }
+    }
+    final total = _docTotal(usd);
     ({int paid, PaymentType method, String agent, String signature})? pay;
     if (supplier != null) {
       final debt = await ref.read(supplierRepoProvider).balanceOf(supplier.id);
       if (!mounted) return;
       pay = await showDialog<({int paid, PaymentType method, String agent, String signature})>(
         context: context,
-        builder: (_) => _ReceivePaymentDialog(supplierName: supplier.name, total: total, debtBefore: debt),
+        builder: (_) => _ReceivePaymentDialog(
+          supplierName: supplier.name,
+          total: total,
+          debtBefore: debt,
+          currency: supplier.currency,
+          rate: rate,
+        ),
       );
       if (pay == null) return;
     }
@@ -126,7 +162,7 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
                       barcode: l.product.barcode,
                       unit: l.product.unit,
                       qty: l.qty,
-                      price: l.cost,
+                      price: usd ? (l.costUsd * 100).round() : l.cost,
                     ),
               ],
               docNo: doc,
@@ -138,6 +174,7 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
               signaturePath: pay.signature,
               userId: user.id,
               userName: user.fullName,
+              usdRate: usd ? rate : 0,
             );
       }
       final note = supplier == null
@@ -165,11 +202,13 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
       if (_updatePrices) {
         final repo = ref.read(productRepoProvider);
         for (final l in _lines) {
-          if (l.cost > 0 && l.cost != l.product.purchasePrice) {
+          final usdChanged = usd && l.costUsd > 0 && l.costUsd != l.product.purchasePriceUsd;
+          if (l.cost > 0 && (l.cost != l.product.purchasePrice || usdChanged)) {
             await repo.save(
               ProductsCompanion(
                 id: Value(l.product.id),
                 purchasePrice: Value(l.cost),
+                purchasePriceUsd: usd ? Value(l.costUsd) : const Value.absent(),
                 supplier: supplier == null ? const Value.absent() : Value(supplier.name),
               ),
             );
@@ -188,7 +227,7 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
         });
         final debtPart = supplier == null || pay == null || pay.paid >= total
             ? ''
-            : ' · qarzga yozildi: ${Fmt.money(total - pay.paid)}';
+            : ' · qarzga yozildi: ${Money.fmt(total - pay.paid, supplier.currency)}';
         showMessage(context, 'Kirim saqlandi: $n ta tovar$debtPart');
       }
     } catch (e) {
@@ -209,6 +248,15 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
           if (v != null) setState(() => l.qty = v);
         },
       ),
+      if (_usd)
+        ActionChip(
+          label: Text(Money.usd(l.costUsd)),
+          onPressed: () async {
+            final v = await askNumber(context, title: 'Kirim narxi (dollarda)', initial: l.costUsd, suffix: r'$');
+            if (v != null) setState(() => l.costUsd = v < 0 ? 0 : v);
+          },
+        )
+      else
       ActionChip(
         label: Text(Fmt.money(l.cost)),
         onPressed: () async {
@@ -242,7 +290,10 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final total = _lines.fold<int>(0, (s, l) => s + (l.qty * l.cost).round());
+    ref.watch(supplierBalancesProvider);
+    final usd = _usd;
+    final rate = ref.watch(usdRateProvider);
+    final total = _docTotal(usd);
     final narrow = MediaQuery.sizeOf(context).width < 600;
 
     final header = <Widget>[
@@ -307,7 +358,8 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
     ];
 
     final summary = Text(
-      'Pozitsiyalar: ${_lines.length} · Summa: ${Fmt.money(total)}',
+      'Pozitsiyalar: ${_lines.length} · Summa: ${usd ? Money.fmt(total, Currency.usd.code) : Fmt.money(total)}'
+      '${usd && rate > 0 ? ' (≈ ${Fmt.money(Money.centsToSum(total, rate))})' : ''}',
       style: Theme.of(context).textTheme.titleMedium,
     );
     final clearButton = OutlinedButton(
@@ -415,10 +467,20 @@ class _ReceiveTabState extends ConsumerState<ReceiveTab> with AutomaticKeepAlive
 
 /// Kirimni saqlashdan oldin: firmaga hozir qancha to'lanadi, qolgani qarzga.
 class _ReceivePaymentDialog extends StatefulWidget {
-  const _ReceivePaymentDialog({required this.supplierName, required this.total, required this.debtBefore});
+  const _ReceivePaymentDialog({
+    required this.supplierName,
+    required this.total,
+    required this.debtBefore,
+    this.currency = 'UZS',
+    this.rate = 0,
+  });
   final String supplierName;
+
+  /// Firma valyutasida (so'm yoki sent).
   final int total;
   final int debtBefore;
+  final String currency;
+  final int rate;
 
   @override
   State<_ReceivePaymentDialog> createState() => _ReceivePaymentDialogState();
@@ -430,7 +492,7 @@ class _ReceivePaymentDialogState extends State<_ReceivePaymentDialog> {
   String _signature = '';
   PaymentType _method = PaymentType.cash;
 
-  int get _amount => (Fmt.parseNum(_paid.text) ?? 0).round();
+  int get _amount => Money.toMinor(Fmt.parseNum(_paid.text) ?? 0, widget.currency);
 
   @override
   void dispose() {
@@ -439,7 +501,7 @@ class _ReceivePaymentDialogState extends State<_ReceivePaymentDialog> {
     super.dispose();
   }
 
-  void _set(int v) => setState(() => _paid.text = v == 0 ? '' : Fmt.money(v, suffix: false));
+  void _set(int v) => setState(() => _paid.text = v == 0 ? '' : moneyInputText(v, widget.currency));
 
   @override
   Widget build(BuildContext context) {
@@ -457,13 +519,16 @@ class _ReceivePaymentDialogState extends State<_ReceivePaymentDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Kirim summasi: ${Fmt.money(widget.total)}',
+                'Kirim summasi: ${Money.fmt(widget.total, widget.currency)}',
                 style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
-              if (widget.debtBefore != 0) Text('Oldingi holat — ${debtLabel(widget.debtBefore)}'),
+              if (widget.currency == Currency.usd.code && widget.rate > 0)
+                Text('Kurs: 1\$ = ${Fmt.money(widget.rate)} · ≈ ${Fmt.money(Money.centsToSum(widget.total, widget.rate))}'),
+              if (widget.debtBefore != 0) Text('Oldingi holat — ${debtLabel(widget.debtBefore, widget.currency)}'),
               const SizedBox(height: 12),
               MoneyField(
                 controller: _paid,
+                currency: widget.currency,
                 label: "Hozir to'lanadi",
                 autofocus: true,
                 helper: "Kassada borini kiriting, qolgani qarzga yoziladi",
@@ -487,21 +552,22 @@ class _ReceivePaymentDialogState extends State<_ReceivePaymentDialog> {
               const SizedBox(height: 12),
               if (toDebt > 0)
                 Text(
-                  'Qarzga yoziladi: ${Fmt.money(toDebt)}',
+                  'Qarzga yoziladi: ${Money.fmt(toDebt, widget.currency)}',
                   style: TextStyle(color: theme.colorScheme.error, fontWeight: FontWeight.bold),
                 ),
               if (toDebt < 0)
                 Text(
-                  'Ortiqcha ${Fmt.money(-toDebt)} avans (yoki eski qarzga) hisoblanadi',
+                  'Ortiqcha ${Money.fmt(-toDebt, widget.currency)} avans (yoki eski qarzga) hisoblanadi',
                   style: TextStyle(color: Colors.green.shade700),
                 ),
-              Text('Firma bilan yangi holat — ${debtLabel(after)}', style: TextStyle(color: debtColor(context, after))),
+              Text('Firma bilan yangi holat — ${debtLabel(after, widget.currency)}',
+                  style: TextStyle(color: debtColor(context, after))),
               if (paid > 0) ...[
                 const SizedBox(height: 12),
                 SignatureField(
                   name: _agent,
                   signature: _signature,
-                  subtitle: 'Qabul qilindi: ${Fmt.money(paid)}\n${widget.supplierName}',
+                  subtitle: 'Qabul qilindi: ${Money.fmt(paid, widget.currency)}\n${widget.supplierName}',
                   onSigned: (n) => setState(() => _signature = n),
                 ),
               ],

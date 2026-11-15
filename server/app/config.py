@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # Telefonga beriladigan APK (/telefon). PosSetup uni PosServer.exe yoniga qo'yadi.
     apk_path: str = "./pos-terminal-android.apk"
 
+    # Soatlik zaxira nusxa (baza o'zgargan bo'lsa). Sozlamalari: /nusxalar sahifasi.
+    backup_auto: bool = True
+
     # Bitta pull so'rovida qaytariladigan maksimal yozuvlar soni.
     max_pull_limit: int = 2000
 

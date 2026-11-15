@@ -15,6 +15,7 @@ import '../../services/sync/sync_service.dart';
 import '../../services/sync/server_discovery.dart';
 import '../../core/formatters.dart';
 import '../../state/providers.dart';
+import '../shell/currency_widgets.dart';
 import '../shell/common_widgets.dart';
 import 'branches_section.dart';
 
@@ -37,6 +38,8 @@ class SettingsPage extends ConsumerWidget {
             const BranchesSection(),
             const SizedBox(height: 16),
           ],
+          const CurrencySettingsSection(),
+          const SizedBox(height: 16),
           const _PrintersSection(),
           const SizedBox(height: 16),
           _AlertsSection(values: s),
@@ -784,6 +787,12 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
                   onPressed: openServerPanel,
                   icon: const Icon(Icons.phonelink),
                   label: const Text('Telefon va internet (QR)'),
+                ),
+              if (hasLocalServer)
+                OutlinedButton.icon(
+                  onPressed: openBackupPage,
+                  icon: const Icon(Icons.backup_outlined),
+                  label: const Text('Zaxira nusxalar'),
                 ),
               if (cameraScanSupported)
                 FilledButton.tonalIcon(

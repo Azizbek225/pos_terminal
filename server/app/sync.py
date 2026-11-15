@@ -29,6 +29,7 @@ ENTITIES = (
     "supplier_payments",
     "customers",
     "customer_debts",
+    "currency_rates",
 )
 
 # O'zgarmas yozuvlar: faqat qo'shiladi, hech qachon yangilanmaydi.

@@ -107,6 +107,8 @@ class PaymentInput {
     this.card = 0,
     this.transfer = 0,
     this.debt = 0,
+    this.usd = 0,
+    this.usdRate = 0,
     this.customerId = '',
     this.customerName = '',
   });
@@ -115,12 +117,20 @@ class PaymentInput {
   final int card;
   final int transfer;
 
-  /// Nasiya: mijoz qarziga yoziladigan qism.
+  /// Nasiya: mijoz qarziga yoziladigan qism (so'mda; dollar qarzli mijozga
+  /// kurs bo'yicha dollarga o'tkaziladi).
   final int debt;
+
+  /// Mijoz bergan dollar (naqd) va kurs (so'm/$).
+  final double usd;
+  final int usdRate;
   final String customerId;
   final String customerName;
 
-  int get totalPaid => cash + card + transfer;
+  /// Dollarning so'mdagi qiymati.
+  int get usdInSum => usd <= 0 || usdRate <= 0 ? 0 : (usd * usdRate).round();
+
+  int get totalPaid => cash + card + transfer + usdInSum;
 
   /// To'langan + qarzga yozilgan.
   int get covered => totalPaid + debt;

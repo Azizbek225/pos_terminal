@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/currency.dart';
 import '../../core/constants.dart';
 import '../../core/formatters.dart';
 import '../../core/theme.dart';
@@ -174,7 +175,7 @@ class _ProductRow extends ConsumerWidget {
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
         Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text('${Fmt.qty(p.stockQty)} ${p.unit}', style: TextStyle(fontWeight: FontWeight.bold, color: stockColor)),
-          Text(Fmt.money(p.salePrice), style: theme.textTheme.bodySmall),
+          Text(productPriceLabel(p), style: theme.textTheme.bodySmall),
         ]),
         PopupMenuButton<String>(
           onSelected: (v) async {

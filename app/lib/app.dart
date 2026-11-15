@@ -22,6 +22,7 @@ class _PosAppState extends ConsumerState<PosApp> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(alertServiceProvider).start();
       ref.read(syncServiceProvider).start();
+      ref.read(currencyServiceProvider).start();
     });
   }
 

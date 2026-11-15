@@ -16,6 +16,7 @@ class PeriodSummary {
     this.card = 0,
     this.transfer = 0,
     this.debt = 0,
+    this.usd = 0,
   });
 
   final int total;
@@ -28,6 +29,9 @@ class PeriodSummary {
 
   /// Nasiyaga (qarzga) sotilgan qism — hali qo'lga tushmagan.
   final int debt;
+
+  /// Kassaga tushgan dollar (naqd). So'mdagi qiymati [cash] ga ham kirgan.
+  final double usd;
 
   /// Savdodan hozir qo'lga tushgan pul (naqd, karta, o'tkazma).
   int get collected => total - debt;
@@ -108,8 +112,11 @@ class StatsRepository {
         .customSelect(
           'SELECT COALESCE(SUM(s.total),0) t, COUNT(*) c, COALESCE(SUM(s.total - s.cost_total),0) p, '
           'COALESCE(SUM(s.discount_amount),0) d, '
-          'COALESCE(SUM(s.paid_cash - s.change_amount),0) cash, COALESCE(SUM(s.paid_card),0) card, '
-          'COALESCE(SUM(s.paid_transfer),0) tr, COALESCE(SUM(s.debt_amount),0) debt '
+          // Dollar bilan to'lov naqdga kurs bo'yicha qo'shiladi (qaytim so'mda berilgan).
+          'COALESCE(SUM(s.paid_cash + CAST(ROUND(s.paid_usd * s.usd_rate) AS INTEGER) - s.change_amount),0) cash, '
+          'COALESCE(SUM(s.paid_card),0) card, '
+          'COALESCE(SUM(s.paid_transfer),0) tr, COALESCE(SUM(s.debt_amount),0) debt, '
+          'COALESCE(SUM(s.paid_usd),0.0) usd '
           'FROM sales s WHERE $_completed AND s.created_at >= ? AND s.created_at < ?',
           variables: [Variable.withString(branchId), Variable.withInt(r.fromMs), Variable.withInt(r.toMs)],
           readsFrom: {db.sales},
@@ -124,6 +131,7 @@ class StatsRepository {
               card: row.read<int>('card'),
               transfer: row.read<int>('tr'),
               debt: row.read<int>('debt'),
+              usd: row.read<double>('usd'),
             ));
   }
 

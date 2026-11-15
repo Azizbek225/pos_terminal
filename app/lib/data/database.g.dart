@@ -2564,6 +2564,42 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _salePriceUsdMeta = const VerificationMeta(
+    'salePriceUsd',
+  );
+  @override
+  late final GeneratedColumn<double> salePriceUsd = GeneratedColumn<double>(
+    'sale_price_usd',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _purchasePriceUsdMeta = const VerificationMeta(
+    'purchasePriceUsd',
+  );
+  @override
+  late final GeneratedColumn<double> purchasePriceUsd = GeneratedColumn<double>(
+    'purchase_price_usd',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _usdRateMeta = const VerificationMeta(
+    'usdRate',
+  );
+  @override
+  late final GeneratedColumn<int> usdRate = GeneratedColumn<int>(
+    'usd_rate',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   static const VerificationMeta _stockQtyMeta = const VerificationMeta(
     'stockQty',
   );
@@ -2758,6 +2794,9 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
     purchasePrice,
     salePrice,
     wholesalePrice,
+    salePriceUsd,
+    purchasePriceUsd,
+    usdRate,
     stockQty,
     minStock,
     maxStock,
@@ -2967,6 +3006,30 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         ),
       );
     }
+    if (data.containsKey('sale_price_usd')) {
+      context.handle(
+        _salePriceUsdMeta,
+        salePriceUsd.isAcceptableOrUnknown(
+          data['sale_price_usd']!,
+          _salePriceUsdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('purchase_price_usd')) {
+      context.handle(
+        _purchasePriceUsdMeta,
+        purchasePriceUsd.isAcceptableOrUnknown(
+          data['purchase_price_usd']!,
+          _purchasePriceUsdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('usd_rate')) {
+      context.handle(
+        _usdRateMeta,
+        usdRate.isAcceptableOrUnknown(data['usd_rate']!, _usdRateMeta),
+      );
+    }
     if (data.containsKey('stock_qty')) {
       context.handle(
         _stockQtyMeta,
@@ -3171,6 +3234,18 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
         DriftSqlType.int,
         data['${effectivePrefix}wholesale_price'],
       )!,
+      salePriceUsd: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}sale_price_usd'],
+      )!,
+      purchasePriceUsd: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}purchase_price_usd'],
+      )!,
+      usdRate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}usd_rate'],
+      )!,
       stockQty: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}stock_qty'],
@@ -3265,6 +3340,14 @@ class Product extends DataClass implements Insertable<Product> {
   final int salePrice;
   final int wholesalePrice;
 
+  /// Sotuv narxi dollarda (0 — tovar so'mda). Bo'lsa `salePrice` kurs bo'yicha
+  /// hisoblanadi: kurs oshsa narx ham oshadi, tushsa — o'zgarmaydi (zarar yo'q).
+  final double salePriceUsd;
+  final double purchasePriceUsd;
+
+  /// `salePrice` hisoblangan kurs (so'm/$). Faqat yuqoriga o'zgaradi.
+  final int usdRate;
+
   /// Joriy qoldiq — `stock_movements` yig'indisining keshi (sinxronlanmaydi).
   final double stockQty;
   final double minStock;
@@ -3310,6 +3393,9 @@ class Product extends DataClass implements Insertable<Product> {
     required this.purchasePrice,
     required this.salePrice,
     required this.wholesalePrice,
+    required this.salePriceUsd,
+    required this.purchasePriceUsd,
+    required this.usdRate,
     required this.stockQty,
     required this.minStock,
     required this.maxStock,
@@ -3357,6 +3443,9 @@ class Product extends DataClass implements Insertable<Product> {
     map['purchase_price'] = Variable<int>(purchasePrice);
     map['sale_price'] = Variable<int>(salePrice);
     map['wholesale_price'] = Variable<int>(wholesalePrice);
+    map['sale_price_usd'] = Variable<double>(salePriceUsd);
+    map['purchase_price_usd'] = Variable<double>(purchasePriceUsd);
+    map['usd_rate'] = Variable<int>(usdRate);
     map['stock_qty'] = Variable<double>(stockQty);
     map['min_stock'] = Variable<double>(minStock);
     map['max_stock'] = Variable<double>(maxStock);
@@ -3405,6 +3494,9 @@ class Product extends DataClass implements Insertable<Product> {
       purchasePrice: Value(purchasePrice),
       salePrice: Value(salePrice),
       wholesalePrice: Value(wholesalePrice),
+      salePriceUsd: Value(salePriceUsd),
+      purchasePriceUsd: Value(purchasePriceUsd),
+      usdRate: Value(usdRate),
       stockQty: Value(stockQty),
       minStock: Value(minStock),
       maxStock: Value(maxStock),
@@ -3455,6 +3547,9 @@ class Product extends DataClass implements Insertable<Product> {
       purchasePrice: serializer.fromJson<int>(json['purchasePrice']),
       salePrice: serializer.fromJson<int>(json['salePrice']),
       wholesalePrice: serializer.fromJson<int>(json['wholesalePrice']),
+      salePriceUsd: serializer.fromJson<double>(json['salePriceUsd']),
+      purchasePriceUsd: serializer.fromJson<double>(json['purchasePriceUsd']),
+      usdRate: serializer.fromJson<int>(json['usdRate']),
       stockQty: serializer.fromJson<double>(json['stockQty']),
       minStock: serializer.fromJson<double>(json['minStock']),
       maxStock: serializer.fromJson<double>(json['maxStock']),
@@ -3502,6 +3597,9 @@ class Product extends DataClass implements Insertable<Product> {
       'purchasePrice': serializer.toJson<int>(purchasePrice),
       'salePrice': serializer.toJson<int>(salePrice),
       'wholesalePrice': serializer.toJson<int>(wholesalePrice),
+      'salePriceUsd': serializer.toJson<double>(salePriceUsd),
+      'purchasePriceUsd': serializer.toJson<double>(purchasePriceUsd),
+      'usdRate': serializer.toJson<int>(usdRate),
       'stockQty': serializer.toJson<double>(stockQty),
       'minStock': serializer.toJson<double>(minStock),
       'maxStock': serializer.toJson<double>(maxStock),
@@ -3547,6 +3645,9 @@ class Product extends DataClass implements Insertable<Product> {
     int? purchasePrice,
     int? salePrice,
     int? wholesalePrice,
+    double? salePriceUsd,
+    double? purchasePriceUsd,
+    int? usdRate,
     double? stockQty,
     double? minStock,
     double? maxStock,
@@ -3589,6 +3690,9 @@ class Product extends DataClass implements Insertable<Product> {
     purchasePrice: purchasePrice ?? this.purchasePrice,
     salePrice: salePrice ?? this.salePrice,
     wholesalePrice: wholesalePrice ?? this.wholesalePrice,
+    salePriceUsd: salePriceUsd ?? this.salePriceUsd,
+    purchasePriceUsd: purchasePriceUsd ?? this.purchasePriceUsd,
+    usdRate: usdRate ?? this.usdRate,
     stockQty: stockQty ?? this.stockQty,
     minStock: minStock ?? this.minStock,
     maxStock: maxStock ?? this.maxStock,
@@ -3649,6 +3753,13 @@ class Product extends DataClass implements Insertable<Product> {
       wholesalePrice: data.wholesalePrice.present
           ? data.wholesalePrice.value
           : this.wholesalePrice,
+      salePriceUsd: data.salePriceUsd.present
+          ? data.salePriceUsd.value
+          : this.salePriceUsd,
+      purchasePriceUsd: data.purchasePriceUsd.present
+          ? data.purchasePriceUsd.value
+          : this.purchasePriceUsd,
+      usdRate: data.usdRate.present ? data.usdRate.value : this.usdRate,
       stockQty: data.stockQty.present ? data.stockQty.value : this.stockQty,
       minStock: data.minStock.present ? data.minStock.value : this.minStock,
       maxStock: data.maxStock.present ? data.maxStock.value : this.maxStock,
@@ -3700,6 +3811,9 @@ class Product extends DataClass implements Insertable<Product> {
           ..write('purchasePrice: $purchasePrice, ')
           ..write('salePrice: $salePrice, ')
           ..write('wholesalePrice: $wholesalePrice, ')
+          ..write('salePriceUsd: $salePriceUsd, ')
+          ..write('purchasePriceUsd: $purchasePriceUsd, ')
+          ..write('usdRate: $usdRate, ')
           ..write('stockQty: $stockQty, ')
           ..write('minStock: $minStock, ')
           ..write('maxStock: $maxStock, ')
@@ -3747,6 +3861,9 @@ class Product extends DataClass implements Insertable<Product> {
     purchasePrice,
     salePrice,
     wholesalePrice,
+    salePriceUsd,
+    purchasePriceUsd,
+    usdRate,
     stockQty,
     minStock,
     maxStock,
@@ -3793,6 +3910,9 @@ class Product extends DataClass implements Insertable<Product> {
           other.purchasePrice == this.purchasePrice &&
           other.salePrice == this.salePrice &&
           other.wholesalePrice == this.wholesalePrice &&
+          other.salePriceUsd == this.salePriceUsd &&
+          other.purchasePriceUsd == this.purchasePriceUsd &&
+          other.usdRate == this.usdRate &&
           other.stockQty == this.stockQty &&
           other.minStock == this.minStock &&
           other.maxStock == this.maxStock &&
@@ -3837,6 +3957,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
   final Value<int> purchasePrice;
   final Value<int> salePrice;
   final Value<int> wholesalePrice;
+  final Value<double> salePriceUsd;
+  final Value<double> purchasePriceUsd;
+  final Value<int> usdRate;
   final Value<double> stockQty;
   final Value<double> minStock;
   final Value<double> maxStock;
@@ -3880,6 +4003,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.purchasePrice = const Value.absent(),
     this.salePrice = const Value.absent(),
     this.wholesalePrice = const Value.absent(),
+    this.salePriceUsd = const Value.absent(),
+    this.purchasePriceUsd = const Value.absent(),
+    this.usdRate = const Value.absent(),
     this.stockQty = const Value.absent(),
     this.minStock = const Value.absent(),
     this.maxStock = const Value.absent(),
@@ -3924,6 +4050,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     this.purchasePrice = const Value.absent(),
     this.salePrice = const Value.absent(),
     this.wholesalePrice = const Value.absent(),
+    this.salePriceUsd = const Value.absent(),
+    this.purchasePriceUsd = const Value.absent(),
+    this.usdRate = const Value.absent(),
     this.stockQty = const Value.absent(),
     this.minStock = const Value.absent(),
     this.maxStock = const Value.absent(),
@@ -3971,6 +4100,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Expression<int>? purchasePrice,
     Expression<int>? salePrice,
     Expression<int>? wholesalePrice,
+    Expression<double>? salePriceUsd,
+    Expression<double>? purchasePriceUsd,
+    Expression<int>? usdRate,
     Expression<double>? stockQty,
     Expression<double>? minStock,
     Expression<double>? maxStock,
@@ -4015,6 +4147,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       if (purchasePrice != null) 'purchase_price': purchasePrice,
       if (salePrice != null) 'sale_price': salePrice,
       if (wholesalePrice != null) 'wholesale_price': wholesalePrice,
+      if (salePriceUsd != null) 'sale_price_usd': salePriceUsd,
+      if (purchasePriceUsd != null) 'purchase_price_usd': purchasePriceUsd,
+      if (usdRate != null) 'usd_rate': usdRate,
       if (stockQty != null) 'stock_qty': stockQty,
       if (minStock != null) 'min_stock': minStock,
       if (maxStock != null) 'max_stock': maxStock,
@@ -4061,6 +4196,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     Value<int>? purchasePrice,
     Value<int>? salePrice,
     Value<int>? wholesalePrice,
+    Value<double>? salePriceUsd,
+    Value<double>? purchasePriceUsd,
+    Value<int>? usdRate,
     Value<double>? stockQty,
     Value<double>? minStock,
     Value<double>? maxStock,
@@ -4105,6 +4243,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
       purchasePrice: purchasePrice ?? this.purchasePrice,
       salePrice: salePrice ?? this.salePrice,
       wholesalePrice: wholesalePrice ?? this.wholesalePrice,
+      salePriceUsd: salePriceUsd ?? this.salePriceUsd,
+      purchasePriceUsd: purchasePriceUsd ?? this.purchasePriceUsd,
+      usdRate: usdRate ?? this.usdRate,
       stockQty: stockQty ?? this.stockQty,
       minStock: minStock ?? this.minStock,
       maxStock: maxStock ?? this.maxStock,
@@ -4207,6 +4348,15 @@ class ProductsCompanion extends UpdateCompanion<Product> {
     if (wholesalePrice.present) {
       map['wholesale_price'] = Variable<int>(wholesalePrice.value);
     }
+    if (salePriceUsd.present) {
+      map['sale_price_usd'] = Variable<double>(salePriceUsd.value);
+    }
+    if (purchasePriceUsd.present) {
+      map['purchase_price_usd'] = Variable<double>(purchasePriceUsd.value);
+    }
+    if (usdRate.present) {
+      map['usd_rate'] = Variable<int>(usdRate.value);
+    }
     if (stockQty.present) {
       map['stock_qty'] = Variable<double>(stockQty.value);
     }
@@ -4285,6 +4435,9 @@ class ProductsCompanion extends UpdateCompanion<Product> {
           ..write('purchasePrice: $purchasePrice, ')
           ..write('salePrice: $salePrice, ')
           ..write('wholesalePrice: $wholesalePrice, ')
+          ..write('salePriceUsd: $salePriceUsd, ')
+          ..write('purchasePriceUsd: $purchasePriceUsd, ')
+          ..write('usdRate: $usdRate, ')
           ..write('stockQty: $stockQty, ')
           ..write('minStock: $minStock, ')
           ..write('maxStock: $maxStock, ')
@@ -4666,6 +4819,30 @@ class $SalesTable extends Sales with TableInfo<$SalesTable, Sale> {
     requiredDuringInsert: false,
     defaultValue: const Constant(''),
   );
+  static const VerificationMeta _paidUsdMeta = const VerificationMeta(
+    'paidUsd',
+  );
+  @override
+  late final GeneratedColumn<double> paidUsd = GeneratedColumn<double>(
+    'paid_usd',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _usdRateMeta = const VerificationMeta(
+    'usdRate',
+  );
+  @override
+  late final GeneratedColumn<int> usdRate = GeneratedColumn<int>(
+    'usd_rate',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     createdAt,
@@ -4699,6 +4876,8 @@ class $SalesTable extends Sales with TableInfo<$SalesTable, Sale> {
     debtAmount,
     customerId,
     customerName,
+    paidUsd,
+    usdRate,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -4940,6 +5119,18 @@ class $SalesTable extends Sales with TableInfo<$SalesTable, Sale> {
         ),
       );
     }
+    if (data.containsKey('paid_usd')) {
+      context.handle(
+        _paidUsdMeta,
+        paidUsd.isAcceptableOrUnknown(data['paid_usd']!, _paidUsdMeta),
+      );
+    }
+    if (data.containsKey('usd_rate')) {
+      context.handle(
+        _usdRateMeta,
+        usdRate.isAcceptableOrUnknown(data['usd_rate']!, _usdRateMeta),
+      );
+    }
     return context;
   }
 
@@ -5073,6 +5264,14 @@ class $SalesTable extends Sales with TableInfo<$SalesTable, Sale> {
         DriftSqlType.string,
         data['${effectivePrefix}customer_name'],
       )!,
+      paidUsd: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}paid_usd'],
+      )!,
+      usdRate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}usd_rate'],
+      )!,
     );
   }
 
@@ -5116,6 +5315,11 @@ class Sale extends DataClass implements Insertable<Sale> {
   final int debtAmount;
   final String customerId;
   final String customerName;
+
+  /// Dollar bilan to'langan naqd (dollarda) va savdo paytidagi kurs (so'm/$).
+  /// `paidUsd * usdRate` so'm to'lovga qo'shiladi.
+  final double paidUsd;
+  final int usdRate;
   const Sale({
     required this.createdAt,
     required this.updatedAt,
@@ -5148,6 +5352,8 @@ class Sale extends DataClass implements Insertable<Sale> {
     required this.debtAmount,
     required this.customerId,
     required this.customerName,
+    required this.paidUsd,
+    required this.usdRate,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -5189,6 +5395,8 @@ class Sale extends DataClass implements Insertable<Sale> {
     map['debt_amount'] = Variable<int>(debtAmount);
     map['customer_id'] = Variable<String>(customerId);
     map['customer_name'] = Variable<String>(customerName);
+    map['paid_usd'] = Variable<double>(paidUsd);
+    map['usd_rate'] = Variable<int>(usdRate);
     return map;
   }
 
@@ -5231,6 +5439,8 @@ class Sale extends DataClass implements Insertable<Sale> {
       debtAmount: Value(debtAmount),
       customerId: Value(customerId),
       customerName: Value(customerName),
+      paidUsd: Value(paidUsd),
+      usdRate: Value(usdRate),
     );
   }
 
@@ -5273,6 +5483,8 @@ class Sale extends DataClass implements Insertable<Sale> {
       debtAmount: serializer.fromJson<int>(json['debtAmount']),
       customerId: serializer.fromJson<String>(json['customerId']),
       customerName: serializer.fromJson<String>(json['customerName']),
+      paidUsd: serializer.fromJson<double>(json['paidUsd']),
+      usdRate: serializer.fromJson<int>(json['usdRate']),
     );
   }
   @override
@@ -5310,6 +5522,8 @@ class Sale extends DataClass implements Insertable<Sale> {
       'debtAmount': serializer.toJson<int>(debtAmount),
       'customerId': serializer.toJson<String>(customerId),
       'customerName': serializer.toJson<String>(customerName),
+      'paidUsd': serializer.toJson<double>(paidUsd),
+      'usdRate': serializer.toJson<int>(usdRate),
     };
   }
 
@@ -5345,6 +5559,8 @@ class Sale extends DataClass implements Insertable<Sale> {
     int? debtAmount,
     String? customerId,
     String? customerName,
+    double? paidUsd,
+    int? usdRate,
   }) => Sale(
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -5379,6 +5595,8 @@ class Sale extends DataClass implements Insertable<Sale> {
     debtAmount: debtAmount ?? this.debtAmount,
     customerId: customerId ?? this.customerId,
     customerName: customerName ?? this.customerName,
+    paidUsd: paidUsd ?? this.paidUsd,
+    usdRate: usdRate ?? this.usdRate,
   );
   Sale copyWithCompanion(SalesCompanion data) {
     return Sale(
@@ -5439,6 +5657,8 @@ class Sale extends DataClass implements Insertable<Sale> {
       customerName: data.customerName.present
           ? data.customerName.value
           : this.customerName,
+      paidUsd: data.paidUsd.present ? data.paidUsd.value : this.paidUsd,
+      usdRate: data.usdRate.present ? data.usdRate.value : this.usdRate,
     );
   }
 
@@ -5475,7 +5695,9 @@ class Sale extends DataClass implements Insertable<Sale> {
           ..write('branchId: $branchId, ')
           ..write('debtAmount: $debtAmount, ')
           ..write('customerId: $customerId, ')
-          ..write('customerName: $customerName')
+          ..write('customerName: $customerName, ')
+          ..write('paidUsd: $paidUsd, ')
+          ..write('usdRate: $usdRate')
           ..write(')'))
         .toString();
   }
@@ -5513,6 +5735,8 @@ class Sale extends DataClass implements Insertable<Sale> {
     debtAmount,
     customerId,
     customerName,
+    paidUsd,
+    usdRate,
   ]);
   @override
   bool operator ==(Object other) =>
@@ -5548,7 +5772,9 @@ class Sale extends DataClass implements Insertable<Sale> {
           other.branchId == this.branchId &&
           other.debtAmount == this.debtAmount &&
           other.customerId == this.customerId &&
-          other.customerName == this.customerName);
+          other.customerName == this.customerName &&
+          other.paidUsd == this.paidUsd &&
+          other.usdRate == this.usdRate);
 }
 
 class SalesCompanion extends UpdateCompanion<Sale> {
@@ -5583,6 +5809,8 @@ class SalesCompanion extends UpdateCompanion<Sale> {
   final Value<int> debtAmount;
   final Value<String> customerId;
   final Value<String> customerName;
+  final Value<double> paidUsd;
+  final Value<int> usdRate;
   final Value<int> rowid;
   const SalesCompanion({
     this.createdAt = const Value.absent(),
@@ -5616,6 +5844,8 @@ class SalesCompanion extends UpdateCompanion<Sale> {
     this.debtAmount = const Value.absent(),
     this.customerId = const Value.absent(),
     this.customerName = const Value.absent(),
+    this.paidUsd = const Value.absent(),
+    this.usdRate = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SalesCompanion.insert({
@@ -5650,6 +5880,8 @@ class SalesCompanion extends UpdateCompanion<Sale> {
     this.debtAmount = const Value.absent(),
     this.customerId = const Value.absent(),
     this.customerName = const Value.absent(),
+    this.paidUsd = const Value.absent(),
+    this.usdRate = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : createdAt = Value(createdAt),
        updatedAt = Value(updatedAt),
@@ -5692,6 +5924,8 @@ class SalesCompanion extends UpdateCompanion<Sale> {
     Expression<int>? debtAmount,
     Expression<String>? customerId,
     Expression<String>? customerName,
+    Expression<double>? paidUsd,
+    Expression<int>? usdRate,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -5727,6 +5961,8 @@ class SalesCompanion extends UpdateCompanion<Sale> {
       if (debtAmount != null) 'debt_amount': debtAmount,
       if (customerId != null) 'customer_id': customerId,
       if (customerName != null) 'customer_name': customerName,
+      if (paidUsd != null) 'paid_usd': paidUsd,
+      if (usdRate != null) 'usd_rate': usdRate,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -5763,6 +5999,8 @@ class SalesCompanion extends UpdateCompanion<Sale> {
     Value<int>? debtAmount,
     Value<String>? customerId,
     Value<String>? customerName,
+    Value<double>? paidUsd,
+    Value<int>? usdRate,
     Value<int>? rowid,
   }) {
     return SalesCompanion(
@@ -5797,6 +6035,8 @@ class SalesCompanion extends UpdateCompanion<Sale> {
       debtAmount: debtAmount ?? this.debtAmount,
       customerId: customerId ?? this.customerId,
       customerName: customerName ?? this.customerName,
+      paidUsd: paidUsd ?? this.paidUsd,
+      usdRate: usdRate ?? this.usdRate,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -5897,6 +6137,12 @@ class SalesCompanion extends UpdateCompanion<Sale> {
     if (customerName.present) {
       map['customer_name'] = Variable<String>(customerName.value);
     }
+    if (paidUsd.present) {
+      map['paid_usd'] = Variable<double>(paidUsd.value);
+    }
+    if (usdRate.present) {
+      map['usd_rate'] = Variable<int>(usdRate.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -5937,6 +6183,8 @@ class SalesCompanion extends UpdateCompanion<Sale> {
           ..write('debtAmount: $debtAmount, ')
           ..write('customerId: $customerId, ')
           ..write('customerName: $customerName, ')
+          ..write('paidUsd: $paidUsd, ')
+          ..write('usdRate: $usdRate, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -9819,6 +10067,18 @@ class $SuppliersTable extends Suppliers
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _currencyMeta = const VerificationMeta(
+    'currency',
+  );
+  @override
+  late final GeneratedColumn<String> currency = GeneratedColumn<String>(
+    'currency',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('UZS'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     createdAt,
@@ -9834,6 +10094,7 @@ class $SuppliersTable extends Suppliers
     address,
     note,
     isActive,
+    currency,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -9933,6 +10194,12 @@ class $SuppliersTable extends Suppliers
         isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
       );
     }
+    if (data.containsKey('currency')) {
+      context.handle(
+        _currencyMeta,
+        currency.isAcceptableOrUnknown(data['currency']!, _currencyMeta),
+      );
+    }
     return context;
   }
 
@@ -9994,6 +10261,10 @@ class $SuppliersTable extends Suppliers
         DriftSqlType.bool,
         data['${effectivePrefix}is_active'],
       )!,
+      currency: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}currency'],
+      )!,
     );
   }
 
@@ -10017,6 +10288,10 @@ class Supplier extends DataClass implements Insertable<Supplier> {
   final String address;
   final String note;
   final bool isActive;
+
+  /// Hisob valyutasi: UZS yoki USD. USD bo'lsa shu firmaning barcha kirim,
+  /// to'lov summalari va kirim narxlari SENTDA saqlanadi (1 $ = 100).
+  final String currency;
   const Supplier({
     required this.createdAt,
     required this.updatedAt,
@@ -10031,6 +10306,7 @@ class Supplier extends DataClass implements Insertable<Supplier> {
     required this.address,
     required this.note,
     required this.isActive,
+    required this.currency,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -10048,6 +10324,7 @@ class Supplier extends DataClass implements Insertable<Supplier> {
     map['address'] = Variable<String>(address);
     map['note'] = Variable<String>(note);
     map['is_active'] = Variable<bool>(isActive);
+    map['currency'] = Variable<String>(currency);
     return map;
   }
 
@@ -10066,6 +10343,7 @@ class Supplier extends DataClass implements Insertable<Supplier> {
       address: Value(address),
       note: Value(note),
       isActive: Value(isActive),
+      currency: Value(currency),
     );
   }
 
@@ -10088,6 +10366,7 @@ class Supplier extends DataClass implements Insertable<Supplier> {
       address: serializer.fromJson<String>(json['address']),
       note: serializer.fromJson<String>(json['note']),
       isActive: serializer.fromJson<bool>(json['isActive']),
+      currency: serializer.fromJson<String>(json['currency']),
     );
   }
   @override
@@ -10107,6 +10386,7 @@ class Supplier extends DataClass implements Insertable<Supplier> {
       'address': serializer.toJson<String>(address),
       'note': serializer.toJson<String>(note),
       'isActive': serializer.toJson<bool>(isActive),
+      'currency': serializer.toJson<String>(currency),
     };
   }
 
@@ -10124,6 +10404,7 @@ class Supplier extends DataClass implements Insertable<Supplier> {
     String? address,
     String? note,
     bool? isActive,
+    String? currency,
   }) => Supplier(
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -10138,6 +10419,7 @@ class Supplier extends DataClass implements Insertable<Supplier> {
     address: address ?? this.address,
     note: note ?? this.note,
     isActive: isActive ?? this.isActive,
+    currency: currency ?? this.currency,
   );
   Supplier copyWithCompanion(SuppliersCompanion data) {
     return Supplier(
@@ -10156,6 +10438,7 @@ class Supplier extends DataClass implements Insertable<Supplier> {
       address: data.address.present ? data.address.value : this.address,
       note: data.note.present ? data.note.value : this.note,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      currency: data.currency.present ? data.currency.value : this.currency,
     );
   }
 
@@ -10174,7 +10457,8 @@ class Supplier extends DataClass implements Insertable<Supplier> {
           ..write('contactPerson: $contactPerson, ')
           ..write('address: $address, ')
           ..write('note: $note, ')
-          ..write('isActive: $isActive')
+          ..write('isActive: $isActive, ')
+          ..write('currency: $currency')
           ..write(')'))
         .toString();
   }
@@ -10194,6 +10478,7 @@ class Supplier extends DataClass implements Insertable<Supplier> {
     address,
     note,
     isActive,
+    currency,
   );
   @override
   bool operator ==(Object other) =>
@@ -10211,7 +10496,8 @@ class Supplier extends DataClass implements Insertable<Supplier> {
           other.contactPerson == this.contactPerson &&
           other.address == this.address &&
           other.note == this.note &&
-          other.isActive == this.isActive);
+          other.isActive == this.isActive &&
+          other.currency == this.currency);
 }
 
 class SuppliersCompanion extends UpdateCompanion<Supplier> {
@@ -10228,6 +10514,7 @@ class SuppliersCompanion extends UpdateCompanion<Supplier> {
   final Value<String> address;
   final Value<String> note;
   final Value<bool> isActive;
+  final Value<String> currency;
   final Value<int> rowid;
   const SuppliersCompanion({
     this.createdAt = const Value.absent(),
@@ -10243,6 +10530,7 @@ class SuppliersCompanion extends UpdateCompanion<Supplier> {
     this.address = const Value.absent(),
     this.note = const Value.absent(),
     this.isActive = const Value.absent(),
+    this.currency = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SuppliersCompanion.insert({
@@ -10259,6 +10547,7 @@ class SuppliersCompanion extends UpdateCompanion<Supplier> {
     this.address = const Value.absent(),
     this.note = const Value.absent(),
     this.isActive = const Value.absent(),
+    this.currency = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : createdAt = Value(createdAt),
        updatedAt = Value(updatedAt),
@@ -10278,6 +10567,7 @@ class SuppliersCompanion extends UpdateCompanion<Supplier> {
     Expression<String>? address,
     Expression<String>? note,
     Expression<bool>? isActive,
+    Expression<String>? currency,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -10294,6 +10584,7 @@ class SuppliersCompanion extends UpdateCompanion<Supplier> {
       if (address != null) 'address': address,
       if (note != null) 'note': note,
       if (isActive != null) 'is_active': isActive,
+      if (currency != null) 'currency': currency,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -10312,6 +10603,7 @@ class SuppliersCompanion extends UpdateCompanion<Supplier> {
     Value<String>? address,
     Value<String>? note,
     Value<bool>? isActive,
+    Value<String>? currency,
     Value<int>? rowid,
   }) {
     return SuppliersCompanion(
@@ -10328,6 +10620,7 @@ class SuppliersCompanion extends UpdateCompanion<Supplier> {
       address: address ?? this.address,
       note: note ?? this.note,
       isActive: isActive ?? this.isActive,
+      currency: currency ?? this.currency,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -10374,6 +10667,9 @@ class SuppliersCompanion extends UpdateCompanion<Supplier> {
     if (isActive.present) {
       map['is_active'] = Variable<bool>(isActive.value);
     }
+    if (currency.present) {
+      map['currency'] = Variable<String>(currency.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -10396,6 +10692,7 @@ class SuppliersCompanion extends UpdateCompanion<Supplier> {
           ..write('address: $address, ')
           ..write('note: $note, ')
           ..write('isActive: $isActive, ')
+          ..write('currency: $currency, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -10623,6 +10920,18 @@ class $SupplierPurchasesTable extends SupplierPurchases
     requiredDuringInsert: false,
     defaultValue: const Constant(kDefaultBranchId),
   );
+  static const VerificationMeta _usdRateMeta = const VerificationMeta(
+    'usdRate',
+  );
+  @override
+  late final GeneratedColumn<int> usdRate = GeneratedColumn<int>(
+    'usd_rate',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     createdAt,
@@ -10644,6 +10953,7 @@ class $SupplierPurchasesTable extends SupplierPurchases
     userId,
     userName,
     branchId,
+    usdRate,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -10781,6 +11091,12 @@ class $SupplierPurchasesTable extends SupplierPurchases
         branchId.isAcceptableOrUnknown(data['branch_id']!, _branchIdMeta),
       );
     }
+    if (data.containsKey('usd_rate')) {
+      context.handle(
+        _usdRateMeta,
+        usdRate.isAcceptableOrUnknown(data['usd_rate']!, _usdRateMeta),
+      );
+    }
     return context;
   }
 
@@ -10866,6 +11182,10 @@ class $SupplierPurchasesTable extends SupplierPurchases
         DriftSqlType.string,
         data['${effectivePrefix}branch_id'],
       )!,
+      usdRate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}usd_rate'],
+      )!,
     );
   }
 
@@ -10898,6 +11218,9 @@ class SupplierPurchase extends DataClass
   final String userId;
   final String userName;
   final String branchId;
+
+  /// Hujjat paytidagi dollar kursi (so'm/$), dollar firmalar uchun.
+  final int usdRate;
   const SupplierPurchase({
     required this.createdAt,
     required this.updatedAt,
@@ -10918,6 +11241,7 @@ class SupplierPurchase extends DataClass
     required this.userId,
     required this.userName,
     required this.branchId,
+    required this.usdRate,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -10941,6 +11265,7 @@ class SupplierPurchase extends DataClass
     map['user_id'] = Variable<String>(userId);
     map['user_name'] = Variable<String>(userName);
     map['branch_id'] = Variable<String>(branchId);
+    map['usd_rate'] = Variable<int>(usdRate);
     return map;
   }
 
@@ -10965,6 +11290,7 @@ class SupplierPurchase extends DataClass
       userId: Value(userId),
       userName: Value(userName),
       branchId: Value(branchId),
+      usdRate: Value(usdRate),
     );
   }
 
@@ -10993,6 +11319,7 @@ class SupplierPurchase extends DataClass
       userId: serializer.fromJson<String>(json['userId']),
       userName: serializer.fromJson<String>(json['userName']),
       branchId: serializer.fromJson<String>(json['branchId']),
+      usdRate: serializer.fromJson<int>(json['usdRate']),
     );
   }
   @override
@@ -11018,6 +11345,7 @@ class SupplierPurchase extends DataClass
       'userId': serializer.toJson<String>(userId),
       'userName': serializer.toJson<String>(userName),
       'branchId': serializer.toJson<String>(branchId),
+      'usdRate': serializer.toJson<int>(usdRate),
     };
   }
 
@@ -11041,6 +11369,7 @@ class SupplierPurchase extends DataClass
     String? userId,
     String? userName,
     String? branchId,
+    int? usdRate,
   }) => SupplierPurchase(
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -11061,6 +11390,7 @@ class SupplierPurchase extends DataClass
     userId: userId ?? this.userId,
     userName: userName ?? this.userName,
     branchId: branchId ?? this.branchId,
+    usdRate: usdRate ?? this.usdRate,
   );
   SupplierPurchase copyWithCompanion(SupplierPurchasesCompanion data) {
     return SupplierPurchase(
@@ -11089,6 +11419,7 @@ class SupplierPurchase extends DataClass
       userId: data.userId.present ? data.userId.value : this.userId,
       userName: data.userName.present ? data.userName.value : this.userName,
       branchId: data.branchId.present ? data.branchId.value : this.branchId,
+      usdRate: data.usdRate.present ? data.usdRate.value : this.usdRate,
     );
   }
 
@@ -11113,7 +11444,8 @@ class SupplierPurchase extends DataClass
           ..write('note: $note, ')
           ..write('userId: $userId, ')
           ..write('userName: $userName, ')
-          ..write('branchId: $branchId')
+          ..write('branchId: $branchId, ')
+          ..write('usdRate: $usdRate')
           ..write(')'))
         .toString();
   }
@@ -11139,6 +11471,7 @@ class SupplierPurchase extends DataClass
     userId,
     userName,
     branchId,
+    usdRate,
   );
   @override
   bool operator ==(Object other) =>
@@ -11162,7 +11495,8 @@ class SupplierPurchase extends DataClass
           other.note == this.note &&
           other.userId == this.userId &&
           other.userName == this.userName &&
-          other.branchId == this.branchId);
+          other.branchId == this.branchId &&
+          other.usdRate == this.usdRate);
 }
 
 class SupplierPurchasesCompanion extends UpdateCompanion<SupplierPurchase> {
@@ -11185,6 +11519,7 @@ class SupplierPurchasesCompanion extends UpdateCompanion<SupplierPurchase> {
   final Value<String> userId;
   final Value<String> userName;
   final Value<String> branchId;
+  final Value<int> usdRate;
   final Value<int> rowid;
   const SupplierPurchasesCompanion({
     this.createdAt = const Value.absent(),
@@ -11206,6 +11541,7 @@ class SupplierPurchasesCompanion extends UpdateCompanion<SupplierPurchase> {
     this.userId = const Value.absent(),
     this.userName = const Value.absent(),
     this.branchId = const Value.absent(),
+    this.usdRate = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SupplierPurchasesCompanion.insert({
@@ -11228,6 +11564,7 @@ class SupplierPurchasesCompanion extends UpdateCompanion<SupplierPurchase> {
     this.userId = const Value.absent(),
     this.userName = const Value.absent(),
     this.branchId = const Value.absent(),
+    this.usdRate = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : createdAt = Value(createdAt),
        updatedAt = Value(updatedAt),
@@ -11254,6 +11591,7 @@ class SupplierPurchasesCompanion extends UpdateCompanion<SupplierPurchase> {
     Expression<String>? userId,
     Expression<String>? userName,
     Expression<String>? branchId,
+    Expression<int>? usdRate,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -11276,6 +11614,7 @@ class SupplierPurchasesCompanion extends UpdateCompanion<SupplierPurchase> {
       if (userId != null) 'user_id': userId,
       if (userName != null) 'user_name': userName,
       if (branchId != null) 'branch_id': branchId,
+      if (usdRate != null) 'usd_rate': usdRate,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -11300,6 +11639,7 @@ class SupplierPurchasesCompanion extends UpdateCompanion<SupplierPurchase> {
     Value<String>? userId,
     Value<String>? userName,
     Value<String>? branchId,
+    Value<int>? usdRate,
     Value<int>? rowid,
   }) {
     return SupplierPurchasesCompanion(
@@ -11322,6 +11662,7 @@ class SupplierPurchasesCompanion extends UpdateCompanion<SupplierPurchase> {
       userId: userId ?? this.userId,
       userName: userName ?? this.userName,
       branchId: branchId ?? this.branchId,
+      usdRate: usdRate ?? this.usdRate,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -11386,6 +11727,9 @@ class SupplierPurchasesCompanion extends UpdateCompanion<SupplierPurchase> {
     if (branchId.present) {
       map['branch_id'] = Variable<String>(branchId.value);
     }
+    if (usdRate.present) {
+      map['usd_rate'] = Variable<int>(usdRate.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -11414,6 +11758,7 @@ class SupplierPurchasesCompanion extends UpdateCompanion<SupplierPurchase> {
           ..write('userId: $userId, ')
           ..write('userName: $userName, ')
           ..write('branchId: $branchId, ')
+          ..write('usdRate: $usdRate, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -13386,6 +13731,18 @@ class $CustomersTable extends Customers
     ),
     defaultValue: const Constant(true),
   );
+  static const VerificationMeta _currencyMeta = const VerificationMeta(
+    'currency',
+  );
+  @override
+  late final GeneratedColumn<String> currency = GeneratedColumn<String>(
+    'currency',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('UZS'),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     createdAt,
@@ -13400,6 +13757,7 @@ class $CustomersTable extends Customers
     address,
     note,
     isActive,
+    currency,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -13490,6 +13848,12 @@ class $CustomersTable extends Customers
         isActive.isAcceptableOrUnknown(data['is_active']!, _isActiveMeta),
       );
     }
+    if (data.containsKey('currency')) {
+      context.handle(
+        _currencyMeta,
+        currency.isAcceptableOrUnknown(data['currency']!, _currencyMeta),
+      );
+    }
     return context;
   }
 
@@ -13547,6 +13911,10 @@ class $CustomersTable extends Customers
         DriftSqlType.bool,
         data['${effectivePrefix}is_active'],
       )!,
+      currency: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}currency'],
+      )!,
     );
   }
 
@@ -13569,6 +13937,9 @@ class Customer extends DataClass implements Insertable<Customer> {
   final String address;
   final String note;
   final bool isActive;
+
+  /// Qarz valyutasi: UZS yoki USD. USD bo'lsa daftardagi summalar SENTDA.
+  final String currency;
   const Customer({
     required this.createdAt,
     required this.updatedAt,
@@ -13582,6 +13953,7 @@ class Customer extends DataClass implements Insertable<Customer> {
     required this.address,
     required this.note,
     required this.isActive,
+    required this.currency,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -13598,6 +13970,7 @@ class Customer extends DataClass implements Insertable<Customer> {
     map['address'] = Variable<String>(address);
     map['note'] = Variable<String>(note);
     map['is_active'] = Variable<bool>(isActive);
+    map['currency'] = Variable<String>(currency);
     return map;
   }
 
@@ -13615,6 +13988,7 @@ class Customer extends DataClass implements Insertable<Customer> {
       address: Value(address),
       note: Value(note),
       isActive: Value(isActive),
+      currency: Value(currency),
     );
   }
 
@@ -13636,6 +14010,7 @@ class Customer extends DataClass implements Insertable<Customer> {
       address: serializer.fromJson<String>(json['address']),
       note: serializer.fromJson<String>(json['note']),
       isActive: serializer.fromJson<bool>(json['isActive']),
+      currency: serializer.fromJson<String>(json['currency']),
     );
   }
   @override
@@ -13654,6 +14029,7 @@ class Customer extends DataClass implements Insertable<Customer> {
       'address': serializer.toJson<String>(address),
       'note': serializer.toJson<String>(note),
       'isActive': serializer.toJson<bool>(isActive),
+      'currency': serializer.toJson<String>(currency),
     };
   }
 
@@ -13670,6 +14046,7 @@ class Customer extends DataClass implements Insertable<Customer> {
     String? address,
     String? note,
     bool? isActive,
+    String? currency,
   }) => Customer(
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -13683,6 +14060,7 @@ class Customer extends DataClass implements Insertable<Customer> {
     address: address ?? this.address,
     note: note ?? this.note,
     isActive: isActive ?? this.isActive,
+    currency: currency ?? this.currency,
   );
   Customer copyWithCompanion(CustomersCompanion data) {
     return Customer(
@@ -13698,6 +14076,7 @@ class Customer extends DataClass implements Insertable<Customer> {
       address: data.address.present ? data.address.value : this.address,
       note: data.note.present ? data.note.value : this.note,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
+      currency: data.currency.present ? data.currency.value : this.currency,
     );
   }
 
@@ -13715,7 +14094,8 @@ class Customer extends DataClass implements Insertable<Customer> {
           ..write('phone: $phone, ')
           ..write('address: $address, ')
           ..write('note: $note, ')
-          ..write('isActive: $isActive')
+          ..write('isActive: $isActive, ')
+          ..write('currency: $currency')
           ..write(')'))
         .toString();
   }
@@ -13734,6 +14114,7 @@ class Customer extends DataClass implements Insertable<Customer> {
     address,
     note,
     isActive,
+    currency,
   );
   @override
   bool operator ==(Object other) =>
@@ -13750,7 +14131,8 @@ class Customer extends DataClass implements Insertable<Customer> {
           other.phone == this.phone &&
           other.address == this.address &&
           other.note == this.note &&
-          other.isActive == this.isActive);
+          other.isActive == this.isActive &&
+          other.currency == this.currency);
 }
 
 class CustomersCompanion extends UpdateCompanion<Customer> {
@@ -13766,6 +14148,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
   final Value<String> address;
   final Value<String> note;
   final Value<bool> isActive;
+  final Value<String> currency;
   final Value<int> rowid;
   const CustomersCompanion({
     this.createdAt = const Value.absent(),
@@ -13780,6 +14163,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     this.address = const Value.absent(),
     this.note = const Value.absent(),
     this.isActive = const Value.absent(),
+    this.currency = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CustomersCompanion.insert({
@@ -13795,6 +14179,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     this.address = const Value.absent(),
     this.note = const Value.absent(),
     this.isActive = const Value.absent(),
+    this.currency = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : createdAt = Value(createdAt),
        updatedAt = Value(updatedAt),
@@ -13813,6 +14198,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     Expression<String>? address,
     Expression<String>? note,
     Expression<bool>? isActive,
+    Expression<String>? currency,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -13828,6 +14214,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
       if (address != null) 'address': address,
       if (note != null) 'note': note,
       if (isActive != null) 'is_active': isActive,
+      if (currency != null) 'currency': currency,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -13845,6 +14232,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     Value<String>? address,
     Value<String>? note,
     Value<bool>? isActive,
+    Value<String>? currency,
     Value<int>? rowid,
   }) {
     return CustomersCompanion(
@@ -13860,6 +14248,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
       address: address ?? this.address,
       note: note ?? this.note,
       isActive: isActive ?? this.isActive,
+      currency: currency ?? this.currency,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -13903,6 +14292,9 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
     if (isActive.present) {
       map['is_active'] = Variable<bool>(isActive.value);
     }
+    if (currency.present) {
+      map['currency'] = Variable<String>(currency.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -13924,6 +14316,7 @@ class CustomersCompanion extends UpdateCompanion<Customer> {
           ..write('address: $address, ')
           ..write('note: $note, ')
           ..write('isActive: $isActive, ')
+          ..write('currency: $currency, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -14112,6 +14505,18 @@ class $CustomerDebtsTable extends CustomerDebts
     requiredDuringInsert: false,
     defaultValue: const Constant(kDefaultBranchId),
   );
+  static const VerificationMeta _usdRateMeta = const VerificationMeta(
+    'usdRate',
+  );
+  @override
+  late final GeneratedColumn<int> usdRate = GeneratedColumn<int>(
+    'usd_rate',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     createdAt,
@@ -14130,6 +14535,7 @@ class $CustomerDebtsTable extends CustomerDebts
     userId,
     userName,
     branchId,
+    usdRate,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -14248,6 +14654,12 @@ class $CustomerDebtsTable extends CustomerDebts
         branchId.isAcceptableOrUnknown(data['branch_id']!, _branchIdMeta),
       );
     }
+    if (data.containsKey('usd_rate')) {
+      context.handle(
+        _usdRateMeta,
+        usdRate.isAcceptableOrUnknown(data['usd_rate']!, _usdRateMeta),
+      );
+    }
     return context;
   }
 
@@ -14321,6 +14733,10 @@ class $CustomerDebtsTable extends CustomerDebts
         DriftSqlType.string,
         data['${effectivePrefix}branch_id'],
       )!,
+      usdRate: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}usd_rate'],
+      )!,
     );
   }
 
@@ -14347,6 +14763,9 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
   final String userId;
   final String userName;
   final String branchId;
+
+  /// Yozuv paytidagi dollar kursi (dollar qarzlarda so'm to'lovni hisoblash uchun).
+  final int usdRate;
   const CustomerDebt({
     required this.createdAt,
     required this.updatedAt,
@@ -14364,6 +14783,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
     required this.userId,
     required this.userName,
     required this.branchId,
+    required this.usdRate,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -14384,6 +14804,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
     map['user_id'] = Variable<String>(userId);
     map['user_name'] = Variable<String>(userName);
     map['branch_id'] = Variable<String>(branchId);
+    map['usd_rate'] = Variable<int>(usdRate);
     return map;
   }
 
@@ -14405,6 +14826,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
       userId: Value(userId),
       userName: Value(userName),
       branchId: Value(branchId),
+      usdRate: Value(usdRate),
     );
   }
 
@@ -14430,6 +14852,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
       userId: serializer.fromJson<String>(json['userId']),
       userName: serializer.fromJson<String>(json['userName']),
       branchId: serializer.fromJson<String>(json['branchId']),
+      usdRate: serializer.fromJson<int>(json['usdRate']),
     );
   }
   @override
@@ -14452,6 +14875,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
       'userId': serializer.toJson<String>(userId),
       'userName': serializer.toJson<String>(userName),
       'branchId': serializer.toJson<String>(branchId),
+      'usdRate': serializer.toJson<int>(usdRate),
     };
   }
 
@@ -14472,6 +14896,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
     String? userId,
     String? userName,
     String? branchId,
+    int? usdRate,
   }) => CustomerDebt(
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -14489,6 +14914,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
     userId: userId ?? this.userId,
     userName: userName ?? this.userName,
     branchId: branchId ?? this.branchId,
+    usdRate: usdRate ?? this.usdRate,
   );
   CustomerDebt copyWithCompanion(CustomerDebtsCompanion data) {
     return CustomerDebt(
@@ -14510,6 +14936,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
       userId: data.userId.present ? data.userId.value : this.userId,
       userName: data.userName.present ? data.userName.value : this.userName,
       branchId: data.branchId.present ? data.branchId.value : this.branchId,
+      usdRate: data.usdRate.present ? data.usdRate.value : this.usdRate,
     );
   }
 
@@ -14531,7 +14958,8 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
           ..write('note: $note, ')
           ..write('userId: $userId, ')
           ..write('userName: $userName, ')
-          ..write('branchId: $branchId')
+          ..write('branchId: $branchId, ')
+          ..write('usdRate: $usdRate')
           ..write(')'))
         .toString();
   }
@@ -14554,6 +14982,7 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
     userId,
     userName,
     branchId,
+    usdRate,
   );
   @override
   bool operator ==(Object other) =>
@@ -14574,7 +15003,8 @@ class CustomerDebt extends DataClass implements Insertable<CustomerDebt> {
           other.note == this.note &&
           other.userId == this.userId &&
           other.userName == this.userName &&
-          other.branchId == this.branchId);
+          other.branchId == this.branchId &&
+          other.usdRate == this.usdRate);
 }
 
 class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
@@ -14594,6 +15024,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
   final Value<String> userId;
   final Value<String> userName;
   final Value<String> branchId;
+  final Value<int> usdRate;
   final Value<int> rowid;
   const CustomerDebtsCompanion({
     this.createdAt = const Value.absent(),
@@ -14612,6 +15043,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
     this.userId = const Value.absent(),
     this.userName = const Value.absent(),
     this.branchId = const Value.absent(),
+    this.usdRate = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   CustomerDebtsCompanion.insert({
@@ -14631,6 +15063,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
     this.userId = const Value.absent(),
     this.userName = const Value.absent(),
     this.branchId = const Value.absent(),
+    this.usdRate = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : createdAt = Value(createdAt),
        updatedAt = Value(updatedAt),
@@ -14655,6 +15088,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
     Expression<String>? userId,
     Expression<String>? userName,
     Expression<String>? branchId,
+    Expression<int>? usdRate,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -14674,6 +15108,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
       if (userId != null) 'user_id': userId,
       if (userName != null) 'user_name': userName,
       if (branchId != null) 'branch_id': branchId,
+      if (usdRate != null) 'usd_rate': usdRate,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -14695,6 +15130,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
     Value<String>? userId,
     Value<String>? userName,
     Value<String>? branchId,
+    Value<int>? usdRate,
     Value<int>? rowid,
   }) {
     return CustomerDebtsCompanion(
@@ -14714,6 +15150,7 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
       userId: userId ?? this.userId,
       userName: userName ?? this.userName,
       branchId: branchId ?? this.branchId,
+      usdRate: usdRate ?? this.usdRate,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -14769,6 +15206,9 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
     if (branchId.present) {
       map['branch_id'] = Variable<String>(branchId.value);
     }
+    if (usdRate.present) {
+      map['usd_rate'] = Variable<int>(usdRate.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -14794,6 +15234,695 @@ class CustomerDebtsCompanion extends UpdateCompanion<CustomerDebt> {
           ..write('userId: $userId, ')
           ..write('userName: $userName, ')
           ..write('branchId: $branchId, ')
+          ..write('usdRate: $usdRate, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CurrencyRatesTable extends CurrencyRates
+    with TableInfo<$CurrencyRatesTable, CurrencyRate> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CurrencyRatesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _versionMeta = const VerificationMeta(
+    'version',
+  );
+  @override
+  late final GeneratedColumn<int> version = GeneratedColumn<int>(
+    'version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _deviceIdMeta = const VerificationMeta(
+    'deviceId',
+  );
+  @override
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+    'device_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<bool> isDeleted = GeneratedColumn<bool>(
+    'is_deleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_deleted" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _dirtyMeta = const VerificationMeta('dirty');
+  @override
+  late final GeneratedColumn<bool> dirty = GeneratedColumn<bool>(
+    'dirty',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("dirty" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _currencyMeta = const VerificationMeta(
+    'currency',
+  );
+  @override
+  late final GeneratedColumn<String> currency = GeneratedColumn<String>(
+    'currency',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('USD'),
+  );
+  static const VerificationMeta _rateMeta = const VerificationMeta('rate');
+  @override
+  late final GeneratedColumn<double> rate = GeneratedColumn<double>(
+    'rate',
+    aliasedName,
+    false,
+    type: DriftSqlType.double,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _rateDateMeta = const VerificationMeta(
+    'rateDate',
+  );
+  @override
+  late final GeneratedColumn<String> rateDate = GeneratedColumn<String>(
+    'rate_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('manual'),
+  );
+  static const VerificationMeta _userNameMeta = const VerificationMeta(
+    'userName',
+  );
+  @override
+  late final GeneratedColumn<String> userName = GeneratedColumn<String>(
+    'user_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    createdAt,
+    updatedAt,
+    version,
+    deviceId,
+    isDeleted,
+    dirty,
+    id,
+    currency,
+    rate,
+    rateDate,
+    source,
+    userName,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'currency_rates';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CurrencyRate> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('version')) {
+      context.handle(
+        _versionMeta,
+        version.isAcceptableOrUnknown(data['version']!, _versionMeta),
+      );
+    }
+    if (data.containsKey('device_id')) {
+      context.handle(
+        _deviceIdMeta,
+        deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta),
+      );
+    }
+    if (data.containsKey('is_deleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
+      );
+    }
+    if (data.containsKey('dirty')) {
+      context.handle(
+        _dirtyMeta,
+        dirty.isAcceptableOrUnknown(data['dirty']!, _dirtyMeta),
+      );
+    }
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('currency')) {
+      context.handle(
+        _currencyMeta,
+        currency.isAcceptableOrUnknown(data['currency']!, _currencyMeta),
+      );
+    }
+    if (data.containsKey('rate')) {
+      context.handle(
+        _rateMeta,
+        rate.isAcceptableOrUnknown(data['rate']!, _rateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_rateMeta);
+    }
+    if (data.containsKey('rate_date')) {
+      context.handle(
+        _rateDateMeta,
+        rateDate.isAcceptableOrUnknown(data['rate_date']!, _rateDateMeta),
+      );
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    }
+    if (data.containsKey('user_name')) {
+      context.handle(
+        _userNameMeta,
+        userName.isAcceptableOrUnknown(data['user_name']!, _userNameMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  CurrencyRate map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CurrencyRate(
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      version: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}version'],
+      )!,
+      deviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_id'],
+      )!,
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_deleted'],
+      )!,
+      dirty: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}dirty'],
+      )!,
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      currency: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}currency'],
+      )!,
+      rate: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}rate'],
+      )!,
+      rateDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}rate_date'],
+      )!,
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      userName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_name'],
+      )!,
+    );
+  }
+
+  @override
+  $CurrencyRatesTable createAlias(String alias) {
+    return $CurrencyRatesTable(attachedDatabase, alias);
+  }
+}
+
+class CurrencyRate extends DataClass implements Insertable<CurrencyRate> {
+  final int createdAt;
+  final int updatedAt;
+  final int version;
+  final String deviceId;
+  final bool isDeleted;
+  final bool dirty;
+  final String id;
+  final String currency;
+  final double rate;
+  final String rateDate;
+  final String source;
+  final String userName;
+  const CurrencyRate({
+    required this.createdAt,
+    required this.updatedAt,
+    required this.version,
+    required this.deviceId,
+    required this.isDeleted,
+    required this.dirty,
+    required this.id,
+    required this.currency,
+    required this.rate,
+    required this.rateDate,
+    required this.source,
+    required this.userName,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    map['version'] = Variable<int>(version);
+    map['device_id'] = Variable<String>(deviceId);
+    map['is_deleted'] = Variable<bool>(isDeleted);
+    map['dirty'] = Variable<bool>(dirty);
+    map['id'] = Variable<String>(id);
+    map['currency'] = Variable<String>(currency);
+    map['rate'] = Variable<double>(rate);
+    map['rate_date'] = Variable<String>(rateDate);
+    map['source'] = Variable<String>(source);
+    map['user_name'] = Variable<String>(userName);
+    return map;
+  }
+
+  CurrencyRatesCompanion toCompanion(bool nullToAbsent) {
+    return CurrencyRatesCompanion(
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      version: Value(version),
+      deviceId: Value(deviceId),
+      isDeleted: Value(isDeleted),
+      dirty: Value(dirty),
+      id: Value(id),
+      currency: Value(currency),
+      rate: Value(rate),
+      rateDate: Value(rateDate),
+      source: Value(source),
+      userName: Value(userName),
+    );
+  }
+
+  factory CurrencyRate.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CurrencyRate(
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      version: serializer.fromJson<int>(json['version']),
+      deviceId: serializer.fromJson<String>(json['deviceId']),
+      isDeleted: serializer.fromJson<bool>(json['isDeleted']),
+      dirty: serializer.fromJson<bool>(json['dirty']),
+      id: serializer.fromJson<String>(json['id']),
+      currency: serializer.fromJson<String>(json['currency']),
+      rate: serializer.fromJson<double>(json['rate']),
+      rateDate: serializer.fromJson<String>(json['rateDate']),
+      source: serializer.fromJson<String>(json['source']),
+      userName: serializer.fromJson<String>(json['userName']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+      'version': serializer.toJson<int>(version),
+      'deviceId': serializer.toJson<String>(deviceId),
+      'isDeleted': serializer.toJson<bool>(isDeleted),
+      'dirty': serializer.toJson<bool>(dirty),
+      'id': serializer.toJson<String>(id),
+      'currency': serializer.toJson<String>(currency),
+      'rate': serializer.toJson<double>(rate),
+      'rateDate': serializer.toJson<String>(rateDate),
+      'source': serializer.toJson<String>(source),
+      'userName': serializer.toJson<String>(userName),
+    };
+  }
+
+  CurrencyRate copyWith({
+    int? createdAt,
+    int? updatedAt,
+    int? version,
+    String? deviceId,
+    bool? isDeleted,
+    bool? dirty,
+    String? id,
+    String? currency,
+    double? rate,
+    String? rateDate,
+    String? source,
+    String? userName,
+  }) => CurrencyRate(
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    version: version ?? this.version,
+    deviceId: deviceId ?? this.deviceId,
+    isDeleted: isDeleted ?? this.isDeleted,
+    dirty: dirty ?? this.dirty,
+    id: id ?? this.id,
+    currency: currency ?? this.currency,
+    rate: rate ?? this.rate,
+    rateDate: rateDate ?? this.rateDate,
+    source: source ?? this.source,
+    userName: userName ?? this.userName,
+  );
+  CurrencyRate copyWithCompanion(CurrencyRatesCompanion data) {
+    return CurrencyRate(
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      version: data.version.present ? data.version.value : this.version,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+      dirty: data.dirty.present ? data.dirty.value : this.dirty,
+      id: data.id.present ? data.id.value : this.id,
+      currency: data.currency.present ? data.currency.value : this.currency,
+      rate: data.rate.present ? data.rate.value : this.rate,
+      rateDate: data.rateDate.present ? data.rateDate.value : this.rateDate,
+      source: data.source.present ? data.source.value : this.source,
+      userName: data.userName.present ? data.userName.value : this.userName,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CurrencyRate(')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('version: $version, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('dirty: $dirty, ')
+          ..write('id: $id, ')
+          ..write('currency: $currency, ')
+          ..write('rate: $rate, ')
+          ..write('rateDate: $rateDate, ')
+          ..write('source: $source, ')
+          ..write('userName: $userName')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    createdAt,
+    updatedAt,
+    version,
+    deviceId,
+    isDeleted,
+    dirty,
+    id,
+    currency,
+    rate,
+    rateDate,
+    source,
+    userName,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CurrencyRate &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.version == this.version &&
+          other.deviceId == this.deviceId &&
+          other.isDeleted == this.isDeleted &&
+          other.dirty == this.dirty &&
+          other.id == this.id &&
+          other.currency == this.currency &&
+          other.rate == this.rate &&
+          other.rateDate == this.rateDate &&
+          other.source == this.source &&
+          other.userName == this.userName);
+}
+
+class CurrencyRatesCompanion extends UpdateCompanion<CurrencyRate> {
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  final Value<int> version;
+  final Value<String> deviceId;
+  final Value<bool> isDeleted;
+  final Value<bool> dirty;
+  final Value<String> id;
+  final Value<String> currency;
+  final Value<double> rate;
+  final Value<String> rateDate;
+  final Value<String> source;
+  final Value<String> userName;
+  final Value<int> rowid;
+  const CurrencyRatesCompanion({
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.version = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.dirty = const Value.absent(),
+    this.id = const Value.absent(),
+    this.currency = const Value.absent(),
+    this.rate = const Value.absent(),
+    this.rateDate = const Value.absent(),
+    this.source = const Value.absent(),
+    this.userName = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CurrencyRatesCompanion.insert({
+    required int createdAt,
+    required int updatedAt,
+    this.version = const Value.absent(),
+    this.deviceId = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.dirty = const Value.absent(),
+    required String id,
+    this.currency = const Value.absent(),
+    required double rate,
+    this.rateDate = const Value.absent(),
+    this.source = const Value.absent(),
+    this.userName = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt),
+       id = Value(id),
+       rate = Value(rate);
+  static Insertable<CurrencyRate> custom({
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+    Expression<int>? version,
+    Expression<String>? deviceId,
+    Expression<bool>? isDeleted,
+    Expression<bool>? dirty,
+    Expression<String>? id,
+    Expression<String>? currency,
+    Expression<double>? rate,
+    Expression<String>? rateDate,
+    Expression<String>? source,
+    Expression<String>? userName,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (version != null) 'version': version,
+      if (deviceId != null) 'device_id': deviceId,
+      if (isDeleted != null) 'is_deleted': isDeleted,
+      if (dirty != null) 'dirty': dirty,
+      if (id != null) 'id': id,
+      if (currency != null) 'currency': currency,
+      if (rate != null) 'rate': rate,
+      if (rateDate != null) 'rate_date': rateDate,
+      if (source != null) 'source': source,
+      if (userName != null) 'user_name': userName,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CurrencyRatesCompanion copyWith({
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+    Value<int>? version,
+    Value<String>? deviceId,
+    Value<bool>? isDeleted,
+    Value<bool>? dirty,
+    Value<String>? id,
+    Value<String>? currency,
+    Value<double>? rate,
+    Value<String>? rateDate,
+    Value<String>? source,
+    Value<String>? userName,
+    Value<int>? rowid,
+  }) {
+    return CurrencyRatesCompanion(
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      version: version ?? this.version,
+      deviceId: deviceId ?? this.deviceId,
+      isDeleted: isDeleted ?? this.isDeleted,
+      dirty: dirty ?? this.dirty,
+      id: id ?? this.id,
+      currency: currency ?? this.currency,
+      rate: rate ?? this.rate,
+      rateDate: rateDate ?? this.rateDate,
+      source: source ?? this.source,
+      userName: userName ?? this.userName,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    if (version.present) {
+      map['version'] = Variable<int>(version.value);
+    }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
+    if (isDeleted.present) {
+      map['is_deleted'] = Variable<bool>(isDeleted.value);
+    }
+    if (dirty.present) {
+      map['dirty'] = Variable<bool>(dirty.value);
+    }
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (currency.present) {
+      map['currency'] = Variable<String>(currency.value);
+    }
+    if (rate.present) {
+      map['rate'] = Variable<double>(rate.value);
+    }
+    if (rateDate.present) {
+      map['rate_date'] = Variable<String>(rateDate.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (userName.present) {
+      map['user_name'] = Variable<String>(userName.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CurrencyRatesCompanion(')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('version: $version, ')
+          ..write('deviceId: $deviceId, ')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('dirty: $dirty, ')
+          ..write('id: $id, ')
+          ..write('currency: $currency, ')
+          ..write('rate: $rate, ')
+          ..write('rateDate: $rateDate, ')
+          ..write('source: $source, ')
+          ..write('userName: $userName, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -14824,6 +15953,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   );
   late final $CustomersTable customers = $CustomersTable(this);
   late final $CustomerDebtsTable customerDebts = $CustomerDebtsTable(this);
+  late final $CurrencyRatesTable currencyRates = $CurrencyRatesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -14846,6 +15976,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     supplierPayments,
     customers,
     customerDebts,
+    currencyRates,
   ];
 }
 
@@ -15947,6 +17078,9 @@ typedef $$ProductsTableCreateCompanionBuilder = ProductsCompanion Function({
   Value<int> purchasePrice,
   Value<int> salePrice,
   Value<int> wholesalePrice,
+  Value<double> salePriceUsd,
+  Value<double> purchasePriceUsd,
+  Value<int> usdRate,
   Value<double> stockQty,
   Value<double> minStock,
   Value<double> maxStock,
@@ -15991,6 +17125,9 @@ typedef $$ProductsTableUpdateCompanionBuilder = ProductsCompanion Function({
   Value<int> purchasePrice,
   Value<int> salePrice,
   Value<int> wholesalePrice,
+  Value<double> salePriceUsd,
+  Value<double> purchasePriceUsd,
+  Value<int> usdRate,
   Value<double> stockQty,
   Value<double> minStock,
   Value<double> maxStock,
@@ -16149,6 +17286,21 @@ class $$ProductsTableFilterComposer
 
   ColumnFilters<int> get wholesalePrice => $composableBuilder(
     column: $table.wholesalePrice,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get salePriceUsd => $composableBuilder(
+    column: $table.salePriceUsd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get purchasePriceUsd => $composableBuilder(
+    column: $table.purchasePriceUsd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get usdRate => $composableBuilder(
+    column: $table.usdRate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -16367,6 +17519,21 @@ class $$ProductsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<double> get salePriceUsd => $composableBuilder(
+    column: $table.salePriceUsd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get purchasePriceUsd => $composableBuilder(
+    column: $table.purchasePriceUsd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get usdRate => $composableBuilder(
+    column: $table.usdRate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get stockQty => $composableBuilder(
     column: $table.stockQty,
     builder: (column) => ColumnOrderings(column),
@@ -16544,6 +17711,19 @@ class $$ProductsTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<double> get salePriceUsd => $composableBuilder(
+    column: $table.salePriceUsd,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get purchasePriceUsd => $composableBuilder(
+    column: $table.purchasePriceUsd,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get usdRate =>
+      $composableBuilder(column: $table.usdRate, builder: (column) => column);
+
   GeneratedColumn<double> get stockQty =>
       $composableBuilder(column: $table.stockQty, builder: (column) => column);
 
@@ -16646,6 +17826,9 @@ class $$ProductsTableTableManager
                 Value<int> purchasePrice = const Value.absent(),
                 Value<int> salePrice = const Value.absent(),
                 Value<int> wholesalePrice = const Value.absent(),
+                Value<double> salePriceUsd = const Value.absent(),
+                Value<double> purchasePriceUsd = const Value.absent(),
+                Value<int> usdRate = const Value.absent(),
                 Value<double> stockQty = const Value.absent(),
                 Value<double> minStock = const Value.absent(),
                 Value<double> maxStock = const Value.absent(),
@@ -16689,6 +17872,9 @@ class $$ProductsTableTableManager
                 purchasePrice: purchasePrice,
                 salePrice: salePrice,
                 wholesalePrice: wholesalePrice,
+                salePriceUsd: salePriceUsd,
+                purchasePriceUsd: purchasePriceUsd,
+                usdRate: usdRate,
                 stockQty: stockQty,
                 minStock: minStock,
                 maxStock: maxStock,
@@ -16734,6 +17920,9 @@ class $$ProductsTableTableManager
                 Value<int> purchasePrice = const Value.absent(),
                 Value<int> salePrice = const Value.absent(),
                 Value<int> wholesalePrice = const Value.absent(),
+                Value<double> salePriceUsd = const Value.absent(),
+                Value<double> purchasePriceUsd = const Value.absent(),
+                Value<int> usdRate = const Value.absent(),
                 Value<double> stockQty = const Value.absent(),
                 Value<double> minStock = const Value.absent(),
                 Value<double> maxStock = const Value.absent(),
@@ -16777,6 +17966,9 @@ class $$ProductsTableTableManager
                 purchasePrice: purchasePrice,
                 salePrice: salePrice,
                 wholesalePrice: wholesalePrice,
+                salePriceUsd: salePriceUsd,
+                purchasePriceUsd: purchasePriceUsd,
+                usdRate: usdRate,
                 stockQty: stockQty,
                 minStock: minStock,
                 maxStock: maxStock,
@@ -16856,6 +18048,8 @@ typedef $$SalesTableCreateCompanionBuilder = SalesCompanion Function({
   Value<int> debtAmount,
   Value<String> customerId,
   Value<String> customerName,
+  Value<double> paidUsd,
+  Value<int> usdRate,
   Value<int> rowid,
 });
 typedef $$SalesTableUpdateCompanionBuilder = SalesCompanion Function({
@@ -16890,6 +18084,8 @@ typedef $$SalesTableUpdateCompanionBuilder = SalesCompanion Function({
   Value<int> debtAmount,
   Value<String> customerId,
   Value<String> customerName,
+  Value<double> paidUsd,
+  Value<int> usdRate,
   Value<int> rowid,
 });
 
@@ -17076,6 +18272,16 @@ class $$SalesTableFilterComposer extends Composer<_$AppDatabase, $SalesTable> {
 
   ColumnFilters<String> get customerName => $composableBuilder(
     column: $table.customerName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get paidUsd => $composableBuilder(
+    column: $table.paidUsd,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get usdRate => $composableBuilder(
+    column: $table.usdRate,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -17268,6 +18474,16 @@ class $$SalesTableOrderingComposer
     column: $table.customerName,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<double> get paidUsd => $composableBuilder(
+    column: $table.paidUsd,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get usdRate => $composableBuilder(
+    column: $table.usdRate,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SalesTableAnnotationComposer
@@ -17398,6 +18614,12 @@ class $$SalesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<double> get paidUsd =>
+      $composableBuilder(column: $table.paidUsd, builder: (column) => column);
+
+  GeneratedColumn<int> get usdRate =>
+      $composableBuilder(column: $table.usdRate, builder: (column) => column);
+
   Expression<T> saleItemsRefs<T extends Object>(
     Expression<T> Function($$SaleItemsTableAnnotationComposer a) f,
   ) {
@@ -17483,6 +18705,8 @@ class $$SalesTableTableManager
                 Value<int> debtAmount = const Value.absent(),
                 Value<String> customerId = const Value.absent(),
                 Value<String> customerName = const Value.absent(),
+                Value<double> paidUsd = const Value.absent(),
+                Value<int> usdRate = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SalesCompanion(
                 createdAt: createdAt,
@@ -17516,6 +18740,8 @@ class $$SalesTableTableManager
                 debtAmount: debtAmount,
                 customerId: customerId,
                 customerName: customerName,
+                paidUsd: paidUsd,
+                usdRate: usdRate,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -17551,6 +18777,8 @@ class $$SalesTableTableManager
                 Value<int> debtAmount = const Value.absent(),
                 Value<String> customerId = const Value.absent(),
                 Value<String> customerName = const Value.absent(),
+                Value<double> paidUsd = const Value.absent(),
+                Value<int> usdRate = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SalesCompanion.insert(
                 createdAt: createdAt,
@@ -17584,6 +18812,8 @@ class $$SalesTableTableManager
                 debtAmount: debtAmount,
                 customerId: customerId,
                 customerName: customerName,
+                paidUsd: paidUsd,
+                usdRate: usdRate,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -19610,6 +20840,7 @@ typedef $$SuppliersTableCreateCompanionBuilder = SuppliersCompanion Function({
   Value<String> address,
   Value<String> note,
   Value<bool> isActive,
+  Value<String> currency,
   Value<int> rowid,
 });
 typedef $$SuppliersTableUpdateCompanionBuilder = SuppliersCompanion Function({
@@ -19626,6 +20857,7 @@ typedef $$SuppliersTableUpdateCompanionBuilder = SuppliersCompanion Function({
   Value<String> address,
   Value<String> note,
   Value<bool> isActive,
+  Value<String> currency,
   Value<int> rowid,
 });
 
@@ -19700,6 +20932,11 @@ class $$SuppliersTableFilterComposer
 
   ColumnFilters<bool> get isActive => $composableBuilder(
     column: $table.isActive,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get currency => $composableBuilder(
+    column: $table.currency,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -19777,6 +21014,11 @@ class $$SuppliersTableOrderingComposer
     column: $table.isActive,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get currency => $composableBuilder(
+    column: $table.currency,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SuppliersTableAnnotationComposer
@@ -19828,6 +21070,9 @@ class $$SuppliersTableAnnotationComposer
 
   GeneratedColumn<bool> get isActive =>
       $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<String> get currency =>
+      $composableBuilder(column: $table.currency, builder: (column) => column);
 }
 
 class $$SuppliersTableTableManager
@@ -19871,6 +21116,7 @@ class $$SuppliersTableTableManager
                 Value<String> address = const Value.absent(),
                 Value<String> note = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
+                Value<String> currency = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SuppliersCompanion(
                 createdAt: createdAt,
@@ -19886,6 +21132,7 @@ class $$SuppliersTableTableManager
                 address: address,
                 note: note,
                 isActive: isActive,
+                currency: currency,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -19903,6 +21150,7 @@ class $$SuppliersTableTableManager
                 Value<String> address = const Value.absent(),
                 Value<String> note = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
+                Value<String> currency = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SuppliersCompanion.insert(
                 createdAt: createdAt,
@@ -19918,6 +21166,7 @@ class $$SuppliersTableTableManager
                 address: address,
                 note: note,
                 isActive: isActive,
+                currency: currency,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -19972,6 +21221,7 @@ typedef $$SupplierPurchasesTableCreateCompanionBuilder =
       Value<String> userId,
       Value<String> userName,
       Value<String> branchId,
+      Value<int> usdRate,
       Value<int> rowid,
     });
 typedef $$SupplierPurchasesTableUpdateCompanionBuilder =
@@ -19995,6 +21245,7 @@ typedef $$SupplierPurchasesTableUpdateCompanionBuilder =
       Value<String> userId,
       Value<String> userName,
       Value<String> branchId,
+      Value<int> usdRate,
       Value<int> rowid,
     });
 
@@ -20099,6 +21350,11 @@ class $$SupplierPurchasesTableFilterComposer
 
   ColumnFilters<String> get branchId => $composableBuilder(
     column: $table.branchId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get usdRate => $composableBuilder(
+    column: $table.usdRate,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -20206,6 +21462,11 @@ class $$SupplierPurchasesTableOrderingComposer
     column: $table.branchId,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get usdRate => $composableBuilder(
+    column: $table.usdRate,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SupplierPurchasesTableAnnotationComposer
@@ -20279,6 +21540,9 @@ class $$SupplierPurchasesTableAnnotationComposer
 
   GeneratedColumn<String> get branchId =>
       $composableBuilder(column: $table.branchId, builder: (column) => column);
+
+  GeneratedColumn<int> get usdRate =>
+      $composableBuilder(column: $table.usdRate, builder: (column) => column);
 }
 
 class $$SupplierPurchasesTableTableManager
@@ -20340,6 +21604,7 @@ class $$SupplierPurchasesTableTableManager
                 Value<String> userId = const Value.absent(),
                 Value<String> userName = const Value.absent(),
                 Value<String> branchId = const Value.absent(),
+                Value<int> usdRate = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SupplierPurchasesCompanion(
                 createdAt: createdAt,
@@ -20361,6 +21626,7 @@ class $$SupplierPurchasesTableTableManager
                 userId: userId,
                 userName: userName,
                 branchId: branchId,
+                usdRate: usdRate,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -20384,6 +21650,7 @@ class $$SupplierPurchasesTableTableManager
                 Value<String> userId = const Value.absent(),
                 Value<String> userName = const Value.absent(),
                 Value<String> branchId = const Value.absent(),
+                Value<int> usdRate = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SupplierPurchasesCompanion.insert(
                 createdAt: createdAt,
@@ -20405,6 +21672,7 @@ class $$SupplierPurchasesTableTableManager
                 userId: userId,
                 userName: userName,
                 branchId: branchId,
+                usdRate: usdRate,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -21353,6 +22621,7 @@ typedef $$CustomersTableCreateCompanionBuilder = CustomersCompanion Function({
   Value<String> address,
   Value<String> note,
   Value<bool> isActive,
+  Value<String> currency,
   Value<int> rowid,
 });
 typedef $$CustomersTableUpdateCompanionBuilder = CustomersCompanion Function({
@@ -21368,6 +22637,7 @@ typedef $$CustomersTableUpdateCompanionBuilder = CustomersCompanion Function({
   Value<String> address,
   Value<String> note,
   Value<bool> isActive,
+  Value<String> currency,
   Value<int> rowid,
 });
 
@@ -21437,6 +22707,11 @@ class $$CustomersTableFilterComposer
 
   ColumnFilters<bool> get isActive => $composableBuilder(
     column: $table.isActive,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get currency => $composableBuilder(
+    column: $table.currency,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -21509,6 +22784,11 @@ class $$CustomersTableOrderingComposer
     column: $table.isActive,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get currency => $composableBuilder(
+    column: $table.currency,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CustomersTableAnnotationComposer
@@ -21555,6 +22835,9 @@ class $$CustomersTableAnnotationComposer
 
   GeneratedColumn<bool> get isActive =>
       $composableBuilder(column: $table.isActive, builder: (column) => column);
+
+  GeneratedColumn<String> get currency =>
+      $composableBuilder(column: $table.currency, builder: (column) => column);
 }
 
 class $$CustomersTableTableManager
@@ -21597,6 +22880,7 @@ class $$CustomersTableTableManager
                 Value<String> address = const Value.absent(),
                 Value<String> note = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
+                Value<String> currency = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CustomersCompanion(
                 createdAt: createdAt,
@@ -21611,6 +22895,7 @@ class $$CustomersTableTableManager
                 address: address,
                 note: note,
                 isActive: isActive,
+                currency: currency,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -21627,6 +22912,7 @@ class $$CustomersTableTableManager
                 Value<String> address = const Value.absent(),
                 Value<String> note = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
+                Value<String> currency = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CustomersCompanion.insert(
                 createdAt: createdAt,
@@ -21641,6 +22927,7 @@ class $$CustomersTableTableManager
                 address: address,
                 note: note,
                 isActive: isActive,
+                currency: currency,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -21692,6 +22979,7 @@ typedef $$CustomerDebtsTableCreateCompanionBuilder =
       Value<String> userId,
       Value<String> userName,
       Value<String> branchId,
+      Value<int> usdRate,
       Value<int> rowid,
     });
 typedef $$CustomerDebtsTableUpdateCompanionBuilder =
@@ -21712,6 +23000,7 @@ typedef $$CustomerDebtsTableUpdateCompanionBuilder =
       Value<String> userId,
       Value<String> userName,
       Value<String> branchId,
+      Value<int> usdRate,
       Value<int> rowid,
     });
 
@@ -21801,6 +23090,11 @@ class $$CustomerDebtsTableFilterComposer
 
   ColumnFilters<String> get branchId => $composableBuilder(
     column: $table.branchId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get usdRate => $composableBuilder(
+    column: $table.usdRate,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -21893,6 +23187,11 @@ class $$CustomerDebtsTableOrderingComposer
     column: $table.branchId,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get usdRate => $composableBuilder(
+    column: $table.usdRate,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$CustomerDebtsTableAnnotationComposer
@@ -21953,6 +23252,9 @@ class $$CustomerDebtsTableAnnotationComposer
 
   GeneratedColumn<String> get branchId =>
       $composableBuilder(column: $table.branchId, builder: (column) => column);
+
+  GeneratedColumn<int> get usdRate =>
+      $composableBuilder(column: $table.usdRate, builder: (column) => column);
 }
 
 class $$CustomerDebtsTableTableManager
@@ -22002,6 +23304,7 @@ class $$CustomerDebtsTableTableManager
                 Value<String> userId = const Value.absent(),
                 Value<String> userName = const Value.absent(),
                 Value<String> branchId = const Value.absent(),
+                Value<int> usdRate = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CustomerDebtsCompanion(
                 createdAt: createdAt,
@@ -22020,6 +23323,7 @@ class $$CustomerDebtsTableTableManager
                 userId: userId,
                 userName: userName,
                 branchId: branchId,
+                usdRate: usdRate,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -22040,6 +23344,7 @@ class $$CustomerDebtsTableTableManager
                 Value<String> userId = const Value.absent(),
                 Value<String> userName = const Value.absent(),
                 Value<String> branchId = const Value.absent(),
+                Value<int> usdRate = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => CustomerDebtsCompanion.insert(
                 createdAt: createdAt,
@@ -22058,6 +23363,7 @@ class $$CustomerDebtsTableTableManager
                 userId: userId,
                 userName: userName,
                 branchId: branchId,
+                usdRate: usdRate,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -22092,6 +23398,348 @@ typedef $$CustomerDebtsTableProcessedTableManager =
         BaseReferences<_$AppDatabase, $CustomerDebtsTable, CustomerDebt>,
       ),
       CustomerDebt,
+      PrefetchHooks Function()
+    >;
+typedef $$CurrencyRatesTableCreateCompanionBuilder =
+    CurrencyRatesCompanion Function({
+      required int createdAt,
+      required int updatedAt,
+      Value<int> version,
+      Value<String> deviceId,
+      Value<bool> isDeleted,
+      Value<bool> dirty,
+      required String id,
+      Value<String> currency,
+      required double rate,
+      Value<String> rateDate,
+      Value<String> source,
+      Value<String> userName,
+      Value<int> rowid,
+    });
+typedef $$CurrencyRatesTableUpdateCompanionBuilder =
+    CurrencyRatesCompanion Function({
+      Value<int> createdAt,
+      Value<int> updatedAt,
+      Value<int> version,
+      Value<String> deviceId,
+      Value<bool> isDeleted,
+      Value<bool> dirty,
+      Value<String> id,
+      Value<String> currency,
+      Value<double> rate,
+      Value<String> rateDate,
+      Value<String> source,
+      Value<String> userName,
+      Value<int> rowid,
+    });
+
+class $$CurrencyRatesTableFilterComposer
+    extends Composer<_$AppDatabase, $CurrencyRatesTable> {
+  $$CurrencyRatesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get currency => $composableBuilder(
+    column: $table.currency,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get rate => $composableBuilder(
+    column: $table.rate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get rateDate => $composableBuilder(
+    column: $table.rateDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userName => $composableBuilder(
+    column: $table.userName,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CurrencyRatesTableOrderingComposer
+    extends Composer<_$AppDatabase, $CurrencyRatesTable> {
+  $$CurrencyRatesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get version => $composableBuilder(
+    column: $table.version,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get dirty => $composableBuilder(
+    column: $table.dirty,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get currency => $composableBuilder(
+    column: $table.currency,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get rate => $composableBuilder(
+    column: $table.rate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get rateDate => $composableBuilder(
+    column: $table.rateDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userName => $composableBuilder(
+    column: $table.userName,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CurrencyRatesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CurrencyRatesTable> {
+  $$CurrencyRatesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get version =>
+      $composableBuilder(column: $table.version, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
+
+  GeneratedColumn<bool> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+
+  GeneratedColumn<bool> get dirty =>
+      $composableBuilder(column: $table.dirty, builder: (column) => column);
+
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get currency =>
+      $composableBuilder(column: $table.currency, builder: (column) => column);
+
+  GeneratedColumn<double> get rate =>
+      $composableBuilder(column: $table.rate, builder: (column) => column);
+
+  GeneratedColumn<String> get rateDate =>
+      $composableBuilder(column: $table.rateDate, builder: (column) => column);
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get userName =>
+      $composableBuilder(column: $table.userName, builder: (column) => column);
+}
+
+class $$CurrencyRatesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CurrencyRatesTable,
+          CurrencyRate,
+          $$CurrencyRatesTableFilterComposer,
+          $$CurrencyRatesTableOrderingComposer,
+          $$CurrencyRatesTableAnnotationComposer,
+          $$CurrencyRatesTableCreateCompanionBuilder,
+          $$CurrencyRatesTableUpdateCompanionBuilder,
+          (
+            CurrencyRate,
+            BaseReferences<_$AppDatabase, $CurrencyRatesTable, CurrencyRate>,
+          ),
+          CurrencyRate,
+          PrefetchHooks Function()
+        > {
+  $$CurrencyRatesTableTableManager(_$AppDatabase db, $CurrencyRatesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CurrencyRatesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CurrencyRatesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CurrencyRatesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+                Value<int> version = const Value.absent(),
+                Value<String> deviceId = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                Value<String> id = const Value.absent(),
+                Value<String> currency = const Value.absent(),
+                Value<double> rate = const Value.absent(),
+                Value<String> rateDate = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String> userName = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CurrencyRatesCompanion(
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                version: version,
+                deviceId: deviceId,
+                isDeleted: isDeleted,
+                dirty: dirty,
+                id: id,
+                currency: currency,
+                rate: rate,
+                rateDate: rateDate,
+                source: source,
+                userName: userName,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required int createdAt,
+                required int updatedAt,
+                Value<int> version = const Value.absent(),
+                Value<String> deviceId = const Value.absent(),
+                Value<bool> isDeleted = const Value.absent(),
+                Value<bool> dirty = const Value.absent(),
+                required String id,
+                Value<String> currency = const Value.absent(),
+                required double rate,
+                Value<String> rateDate = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String> userName = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CurrencyRatesCompanion.insert(
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                version: version,
+                deviceId: deviceId,
+                isDeleted: isDeleted,
+                dirty: dirty,
+                id: id,
+                currency: currency,
+                rate: rate,
+                rateDate: rateDate,
+                source: source,
+                userName: userName,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$CurrencyRatesTable, CurrencyRate>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $CurrencyRatesTable,
+                    CurrencyRate
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CurrencyRatesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CurrencyRatesTable,
+      CurrencyRate,
+      $$CurrencyRatesTableFilterComposer,
+      $$CurrencyRatesTableOrderingComposer,
+      $$CurrencyRatesTableAnnotationComposer,
+      $$CurrencyRatesTableCreateCompanionBuilder,
+      $$CurrencyRatesTableUpdateCompanionBuilder,
+      (
+        CurrencyRate,
+        BaseReferences<_$AppDatabase, $CurrencyRatesTable, CurrencyRate>,
+      ),
+      CurrencyRate,
       PrefetchHooks Function()
     >;
 
@@ -22132,4 +23780,6 @@ class $AppDatabaseManager {
       $$CustomersTableTableManager(_db, _db.customers);
   $$CustomerDebtsTableTableManager get customerDebts =>
       $$CustomerDebtsTableTableManager(_db, _db.customerDebts);
+  $$CurrencyRatesTableTableManager get currencyRates =>
+      $$CurrencyRatesTableTableManager(_db, _db.currencyRates);
 }

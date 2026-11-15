@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/constants.dart';
+import '../../core/currency.dart';
 import '../../core/formatters.dart';
 import '../../data/database.dart';
 import '../../services/product_images.dart';
@@ -20,13 +21,23 @@ Color debtColor(BuildContext context, int debt) {
   return scheme.onSurfaceVariant;
 }
 
-String debtLabel(int debt) {
-  if (debt > 0) return 'Qarz: ${Fmt.money(debt)}';
-  if (debt < 0) return 'Firma sizga qarz: ${Fmt.money(-debt)}';
+/// [debt] — firma valyutasida (so'm yoki sent).
+String debtLabel(int debt, [String currency = 'UZS']) {
+  if (debt > 0) return 'Qarz: ${Money.fmt(debt, currency)}';
+  if (debt < 0) return 'Firma sizga qarz: ${Money.fmt(-debt, currency)}';
   return "Hisob yopiq";
 }
 
-int? _parseMoney(String s) => Fmt.parseNum(s)?.round();
+/// Kiritilgan matn -> valyutadagi butun son (so'm yoki sent).
+int? _parseMoney(String s, [String currency = 'UZS']) {
+  final v = Fmt.parseNum(s);
+  return v == null ? null : Money.toMinor(v, currency);
+}
+
+/// Valyutadagi summani maydonga yozish uchun matn.
+String moneyInputText(int minor, String currency) => Currency.fromCode(currency) == Currency.usd
+    ? (minor / 100).toStringAsFixed(2)
+    : Fmt.money(minor, suffix: false);
 
 /// Pul kiritish maydoni (1 250 000 ko'rinishida).
 class MoneyField extends StatelessWidget {
@@ -37,6 +48,7 @@ class MoneyField extends StatelessWidget {
     this.onChanged,
     this.autofocus = false,
     this.helper,
+    this.currency = 'UZS',
   });
   final TextEditingController controller;
   final String label;
@@ -44,15 +56,21 @@ class MoneyField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final bool autofocus;
 
+  /// UZS — butun so'm; USD — dollar (sent bilan).
+  final String currency;
+
   @override
-  Widget build(BuildContext context) => TextField(
-    controller: controller,
-    autofocus: autofocus,
-    keyboardType: TextInputType.number,
-    inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9 ]'))],
-    decoration: InputDecoration(labelText: label, suffixText: "so'm", helperText: helper),
-    onChanged: onChanged,
-  );
+  Widget build(BuildContext context) {
+    final usd = Currency.fromCode(currency) == Currency.usd;
+    return TextField(
+      controller: controller,
+      autofocus: autofocus,
+      keyboardType: usd ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(usd ? r'[0-9., ]' : r'[0-9 ]'))],
+      decoration: InputDecoration(labelText: label, suffixText: usd ? r'$' : "so'm", helperText: helper, helperMaxLines: 2),
+      onChanged: onChanged,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -83,6 +101,7 @@ class _SupplierFormDialogState extends ConsumerState<_SupplierFormDialog> {
   late final _address = TextEditingController(text: widget.supplier?.address ?? '');
   late final _note = TextEditingController(text: widget.supplier?.note ?? '');
   final _opening = TextEditingController();
+  late String _currency = widget.supplier?.currency ?? Currency.uzs.code;
   bool _saving = false;
 
   @override
@@ -104,8 +123,9 @@ class _SupplierFormDialogState extends ConsumerState<_SupplierFormDialog> {
         contactPerson: _contact.text,
         address: _address.text,
         note: _note.text,
+        currency: _currency,
       );
-      final opening = _parseMoney(_opening.text) ?? 0;
+      final opening = _parseMoney(_opening.text, _currency) ?? 0;
       if (widget.supplier == null && opening > 0) {
         final user = ref.read(authProvider)!;
         await repo.createPurchase(
@@ -161,9 +181,32 @@ class _SupplierFormDialogState extends ConsumerState<_SupplierFormDialog> {
                 controller: _note,
                 decoration: const InputDecoration(labelText: 'Izoh'),
               ),
+              const SizedBox(height: 12),
+              Row(children: [
+                const Text('Hisob valyutasi:'),
+                const SizedBox(width: 12),
+                SegmentedButton<String>(
+                  showSelectedIcon: false,
+                  segments: [
+                    ButtonSegment(value: Currency.uzs.code, label: const Text("So'm")),
+                    ButtonSegment(value: Currency.usd.code, label: const Text(r'Dollar ($)')),
+                  ],
+                  selected: {_currency},
+                  onSelectionChanged: (v) => setState(() => _currency = v.first),
+                ),
+              ]),
+              if (_currency == Currency.usd.code)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    "Firma bilan hisob dollarda: kirim, qarz va to'lovlar dollarda yuritiladi.",
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
               if (isNew) ...[
                 const SizedBox(height: 8),
                 MoneyField(
+                  currency: _currency,
                   controller: _opening,
                   label: "Boshlang'ich qarz (ixtiyoriy)",
                   helper: 'Firmaga hozirgacha qancha qarzingiz bor',
@@ -208,7 +251,7 @@ class SupplierPickerField extends ConsumerWidget {
           labelText: 'Firma (yetkazib beruvchi)',
           isDense: true,
           prefixIcon: const Icon(Icons.business_outlined),
-          helperText: selected == null ? null : debtLabel(selected.debt),
+          helperText: selected == null ? null : debtLabel(selected.debt, selected.supplier.currency),
           helperStyle: selected == null ? null : TextStyle(color: debtColor(context, selected.debt)),
           suffixIcon: selected == null
               ? const Icon(Icons.arrow_drop_down)
@@ -269,7 +312,8 @@ class _SupplierPickDialogState extends ConsumerState<_SupplierPickDialog> {
                         return ListTile(
                           leading: const Icon(Icons.business_outlined),
                           title: Text(b.supplier.name),
-                          subtitle: Text(debtLabel(b.debt), style: TextStyle(color: debtColor(context, b.debt))),
+                          subtitle: Text(debtLabel(b.debt, b.supplier.currency),
+                              style: TextStyle(color: debtColor(context, b.debt))),
                           onTap: () => Navigator.pop(context, b.supplier.id),
                         );
                       },
@@ -427,9 +471,26 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
   DateTime _date = DateTime.now();
   bool _saving = false;
 
+  String get _cur => widget.supplier.currency;
+  bool get _usd => _cur == Currency.usd.code;
+
+  /// Dollar firmaga so'm bilan to'lash (kurs bo'yicha dollarga o'tkaziladi).
+  bool _paySum = false;
+
   String _initialAmount() {
     final v = widget.suggested ?? (_refund ? -widget.debt : widget.debt);
-    return v > 0 ? Fmt.money(v, suffix: false) : '';
+    if (v <= 0) return '';
+    if (_usd && _paySum) return Fmt.money(Money.centsToSum(v, ref.read(usdRateProvider)), suffix: false);
+    return moneyInputText(v, _cur);
+  }
+
+  /// Kiritilgan summa firma valyutasida (so'm yoki sent).
+  int _amountMinor() {
+    if (_usd && _paySum) {
+      final sum = _parseMoney(_amount.text) ?? 0;
+      return Money.sumToCents(sum, ref.read(usdRateProvider));
+    }
+    return _parseMoney(_amount.text, _cur) ?? 0;
   }
 
   @override
@@ -441,10 +502,20 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
   }
 
   Future<void> _save() async {
-    final amount = _parseMoney(_amount.text) ?? 0;
+    final rate = ref.read(usdRateProvider);
+    if (_usd && _paySum && rate <= 0) {
+      showMessage(context, 'Dollar kursi kiritilmagan', error: true);
+      return;
+    }
+    final amount = _amountMinor();
     if (amount <= 0) {
       showMessage(context, 'Summani kiriting', error: true);
       return;
+    }
+    var note = _note.text.trim();
+    if (_usd && _paySum) {
+      note = [Fmt.money(_parseMoney(_amount.text) ?? 0), 'kurs ${Fmt.money(rate, suffix: false)}', if (note.isNotEmpty) note]
+          .join(', ');
     }
     if (!_refund && _signature.isEmpty) {
       final ok = await confirmDialog(
@@ -472,7 +543,7 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
             method: _method,
             purchaseId: widget.purchaseId,
             paidAt: at.millisecondsSinceEpoch,
-            note: _note.text,
+            note: note,
             receivedBy: _agent.text,
             signaturePath: _signature,
             userId: user.id,
@@ -491,7 +562,8 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cash = ref.watch(todaySummaryProvider).value?.cash;
-    final amount = _parseMoney(_amount.text) ?? 0;
+    final amount = _amountMinor();
+    final rate = ref.watch(usdRateProvider);
     final after = _refund ? widget.debt + amount : widget.debt - amount;
     return AlertDialog(
       title: Text(widget.supplier.name),
@@ -503,12 +575,30 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                debtLabel(widget.debt),
+                debtLabel(widget.debt, _cur),
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: debtColor(context, widget.debt),
                   fontWeight: FontWeight.bold,
                 ),
               ),
+              if (_usd && rate > 0 && widget.debt != 0)
+                Text('≈ ${Fmt.money(Money.centsToSum(widget.debt.abs(), rate))} (1\$ = ${Fmt.money(rate)})',
+                    style: theme.textTheme.bodySmall),
+              if (_usd) ...[
+                const SizedBox(height: 8),
+                SegmentedButton<bool>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: false, label: Text(r'Dollarda ($)')),
+                    ButtonSegment(value: true, label: Text("So'mda (kurs bilan)")),
+                  ],
+                  selected: {_paySum},
+                  onSelectionChanged: (v) => setState(() {
+                    _paySum = v.first;
+                    _amount.text = _initialAmount();
+                  }),
+                ),
+              ],
               const SizedBox(height: 8),
               SegmentedButton<bool>(
                 segments: const [
@@ -524,8 +614,10 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
               const SizedBox(height: 8),
               MoneyField(
                 controller: _amount,
+                currency: _usd && !_paySum ? _cur : Currency.uzs.code,
                 label: _refund ? 'Firma qaytargan summa' : "To'lanadigan summa",
                 autofocus: true,
+                helper: _usd && _paySum && amount > 0 ? '= ${Money.usd(amount / 100)} qarzdan ayriladi' : null,
                 onChanged: (_) => setState(() {}),
               ),
               if (cash != null && !_refund)
@@ -564,7 +656,7 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
                 name: _agent,
                 signature: _signature,
                 label: _refund ? 'Pulni bergan agent' : 'Pulni olgan agent',
-                subtitle: '${_refund ? 'Qaytarildi' : 'Qabul qilindi'}: ${Fmt.money(amount)}\n${widget.supplier.name}',
+                subtitle: '${_refund ? 'Qaytarildi' : 'Qabul qilindi'}: ${Money.fmt(amount, _cur)}\n${widget.supplier.name}',
                 onSigned: (n) => setState(() => _signature = n),
               ),
               TextField(
@@ -573,7 +665,7 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Keyin — ${debtLabel(after)}',
+                'Keyin — ${debtLabel(after, _cur)}',
                 style: TextStyle(color: debtColor(context, after), fontWeight: FontWeight.w600),
               ),
             ],
@@ -610,7 +702,7 @@ Future<bool> openCreditDialog(
     context: context,
     builder: (c) => StatefulBuilder(
       builder: (c, setState) {
-        final v = _parseMoney(amount.text) ?? 0;
+        final v = _parseMoney(amount.text, supplier.currency) ?? 0;
         return AlertDialog(
           title: const Text('Kam kelgan / qaytarilgan tovar'),
           content: SizedBox(
@@ -626,17 +718,23 @@ Future<bool> openCreditDialog(
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  debtLabel(debt),
+                  debtLabel(debt, supplier.currency),
                   style: TextStyle(color: debtColor(c, debt), fontWeight: FontWeight.bold),
                 ),
-                MoneyField(controller: amount, label: 'Summa', autofocus: true, onChanged: (_) => setState(() {})),
+                MoneyField(
+                  controller: amount,
+                  currency: supplier.currency,
+                  label: 'Summa',
+                  autofocus: true,
+                  onChanged: (_) => setState(() {}),
+                ),
                 TextField(
                   controller: note,
                   decoration: const InputDecoration(labelText: 'Sabab (masalan: 5 ta shampun kelmadi)'),
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Keyin — ${debtLabel(debt - v)}',
+                  'Keyin — ${debtLabel(debt - v, supplier.currency)}',
                   style: TextStyle(color: debtColor(c, debt - v), fontWeight: FontWeight.w600),
                 ),
               ],
@@ -650,7 +748,7 @@ Future<bool> openCreditDialog(
       },
     ),
   );
-  final value = _parseMoney(amount.text) ?? 0;
+  final value = _parseMoney(amount.text, supplier.currency) ?? 0;
   final reason = note.text;
   amount.dispose();
   note.dispose();

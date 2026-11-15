@@ -3,10 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants.dart';
+import '../../../core/currency.dart';
 import '../../../core/formatters.dart';
 import '../../../core/theme.dart';
 import '../../../data/database.dart';
 import '../../../state/cart.dart';
+import '../../../state/providers.dart';
 import '../../customers/customer_widgets.dart';
 
 class PaymentResult {
@@ -38,7 +40,11 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
   final _cash = TextEditingController();
   final _card = TextEditingController();
   final _transfer = TextEditingController();
+  final _usd = TextEditingController();
   late bool _print = widget.printDefault;
+
+  /// Naqd rejimda dollar maydoni ochiqmi.
+  bool _withUsd = false;
   Customer? _customer;
   String? _error;
 
@@ -53,24 +59,50 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
     _cash.dispose();
     _card.dispose();
     _transfer.dispose();
+    _usd.dispose();
     super.dispose();
   }
 
   int _v(TextEditingController c) => (Fmt.parseNum(c.text) ?? 0).round();
 
+  int get _rate => ref.read(usdRateProvider);
+
+  /// Mijoz bergan dollar (naqd va aralash rejimda).
+  double get _usdValue {
+    if (_rate <= 0) return 0;
+    if (_type == PaymentType.mixed || (_type == PaymentType.cash && _withUsd)) {
+      final v = Fmt.parseNum(_usd.text) ?? 0;
+      return v < 0 ? 0 : v;
+    }
+    return 0;
+  }
+
   PaymentInput get _input => switch (_type) {
-        PaymentType.cash => PaymentInput(cash: _v(_cash)),
-        PaymentType.card => PaymentInput(card: widget.total),
-        PaymentType.transfer => PaymentInput(transfer: widget.total),
-        PaymentType.mixed => PaymentInput(cash: _v(_cash), card: _v(_card), transfer: _v(_transfer)),
+        PaymentType.cash => PaymentInput(cash: _v(_cash), usd: _usdValue, usdRate: _rate),
+        PaymentType.card => PaymentInput(card: widget.total, usdRate: _rate),
+        PaymentType.transfer => PaymentInput(transfer: widget.total, usdRate: _rate),
+        PaymentType.mixed => PaymentInput(
+            cash: _v(_cash), card: _v(_card), transfer: _v(_transfer), usd: _usdValue, usdRate: _rate),
         PaymentType.debt => PaymentInput(
             cash: _v(_cash),
             card: _v(_card),
             debt: (widget.total - _v(_cash) - _v(_card)).clamp(0, widget.total),
             customerId: _customer?.id ?? '',
             customerName: _customer?.name ?? '',
+            usdRate: _rate,
           ),
       };
+
+  /// Naqd rejimda dollar kiritilsa — so'm qismi qolgan summaga tushadi.
+  void _onUsdChanged() {
+    setState(() {
+      _error = null;
+      if (_type == PaymentType.cash) {
+        final rest = widget.total - PaymentInput(usd: _usdValue, usdRate: _rate).usdInSum;
+        _cash.text = rest > 0 ? '$rest' : '0';
+      }
+    });
+  }
 
   int get _change => (_input.covered - widget.total).clamp(0, 1 << 40);
   int get _remaining => (widget.total - _input.covered).clamp(0, 1 << 40);
@@ -79,11 +111,16 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
     setState(() {
       _type = t;
       _error = null;
-      if (t == PaymentType.cash) _cash.text = '${widget.total}';
+      if (t == PaymentType.cash) {
+        _cash.text = '${widget.total}';
+        _usd.text = '';
+        _withUsd = false;
+      }
       if (t == PaymentType.mixed || t == PaymentType.debt) {
         _cash.text = '';
         _card.text = '';
         _transfer.text = '';
+        _usd.text = '';
       }
     });
   }
@@ -133,6 +170,27 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
             onSubmitted: (_) => _confirm(),
           ),
         );
+    final rate = ref.watch(usdRateProvider);
+    Widget usdField({bool autofocus = false}) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: TextField(
+            controller: _usd,
+            autofocus: autofocus,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9., ]'))],
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            decoration: InputDecoration(
+              labelText: 'Dollar (naqd)',
+              prefixIcon: const Icon(Icons.attach_money),
+              suffixText: r'$',
+              helperText: _usdValue > 0
+                  ? "= ${Fmt.money(PaymentInput(usd: _usdValue, usdRate: rate).usdInSum)} (kurs ${Fmt.money(rate, suffix: false)})"
+                  : 'Kurs: 1\$ = ${Fmt.money(rate)}',
+            ),
+            onChanged: (_) => _onUsdChanged(),
+            onSubmitted: (_) => _confirm(),
+          ),
+        );
 
     return CallbackShortcuts(
       bindings: {
@@ -158,6 +216,7 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
                   const Text("To'lanadigan summa"),
                   Text(Fmt.money(widget.total),
                       style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  if (rate > 0) Text('≈ ${Money.usd(widget.total / rate)}  (1\$ = ${Fmt.money(rate)})'),
                 ]),
               ),
               const SizedBox(height: 16),
@@ -183,12 +242,22 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
               ),
               const SizedBox(height: 16),
               if (_type == PaymentType.cash) ...[
-                field(_cash, 'Mijoz bergan naqd pul', Icons.payments, autofocus: true),
+                if (_withUsd) usdField(autofocus: true),
+                field(_cash, _withUsd ? "Qolgani so'mda" : 'Mijoz bergan naqd pul', Icons.payments, autofocus: !_withUsd),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   for (final q in _quickCash)
                     ActionChip(
                       label: Text(Fmt.money(q, suffix: false)),
                       onPressed: () => setState(() => _cash.text = '$q'),
+                    ),
+                  if (rate > 0 && !_withUsd)
+                    ActionChip(
+                      avatar: const Icon(Icons.attach_money, size: 18),
+                      label: const Text('Dollar bilan'),
+                      onPressed: () => setState(() {
+                        _withUsd = true;
+                        _usd.text = '';
+                      }),
                     ),
                 ]),
               ],
@@ -205,7 +274,8 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
                   subtitle: Text("Click / Payme / bank o'tkazmasi tushganini tekshiring"),
                 ),
               if (_type == PaymentType.mixed) ...[
-                field(_cash, 'Naqd', Icons.payments, autofocus: true),
+                field(_cash, "Naqd (so'm)", Icons.payments, autofocus: true),
+                if (rate > 0) usdField(),
                 field(_card, 'Karta', Icons.credit_card),
                 field(_transfer, "O'tkazma", Icons.swap_horiz),
                 Text('Qolgan: ${Fmt.money(_remaining)}',
@@ -237,6 +307,16 @@ class _PaymentDialogState extends ConsumerState<_PaymentDialog> {
                             ?.copyWith(fontWeight: FontWeight.bold, color: theme.colorScheme.error)),
                   ]),
                 ),
+                if (_customer?.currency == Currency.usd.code)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      rate > 0
+                          ? "Mijoz qarzi dollarda: ${Money.usd(Money.sumToCents(_input.debt, rate) / 100)} yoziladi (kurs ${Fmt.money(rate, suffix: false)})"
+                          : 'Mijoz qarzi dollarda — avval dollar kursini kiriting',
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                  ),
               ],
               const SizedBox(height: 12),
               if (_change > 0)

@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pos_terminal/core/constants.dart';
 import 'package:pos_terminal/data/database.dart';
+import 'package:pos_terminal/data/repositories/currency_repository.dart';
 import 'package:pos_terminal/core/branch.dart';
 import 'package:pos_terminal/data/repositories/branch_repository.dart';
 import 'package:pos_terminal/data/repositories/settings_repository.dart';
@@ -36,6 +37,31 @@ void main() {
     final sync = SyncService(db: env.db, settings: env.settings, stock: env.stock, stats: env.stats, alerts: env.alerts);
     return (env, sync);
   }
+
+  test("dollar kursi boshqa kassaga o'tadi va u yerda ham narxni oshiradi", () async {
+    final (a, syncA) = await device('K7');
+    final (b, syncB) = await device('T7');
+    final id = await a.products.save(const ProductsCompanion(
+      name: Value('Import sovun'),
+      salePriceUsd: Value(1.0),
+      usdRate: Value(12000),
+      salePrice: Value(12000),
+      barcode: Value('4780000000777'),
+    ));
+    await syncA.syncNow();
+    await syncB.syncNow();
+    // A da kurs oshdi; B kursni sinxronlashdan oladi va narx ikkalasida ham 12 600.
+    final ratesA = CurrencyRepository(a.db, () => a.settings.deviceId());
+    final ratesB = CurrencyRepository(b.db, () => b.settings.deviceId());
+    await ratesA.saveRate(rate: 12600);
+    await syncA.syncNow();
+    await syncB.syncNow();
+    expect((await ratesB.current())!.rate, 12600);
+    await ratesB.applyRate(12600);
+    expect((await b.products.byId(id))!.salePrice, 12600);
+    await a.close();
+    await b.close();
+  }, skip: url == null ? 'SYNC_TEST_URL berilmagan' : null);
 
   test("ulanishni tekshirish API kalitni ham tekshiradi", () async {
     final (env, sync) = await device('K9');
