@@ -572,6 +572,22 @@ o'chiring (2–4-bo'limlardagi yo'llar), shunda toza baza bilan boshlanadi.
   qilish mumkin. Mijozga nasiya so'mdagi summa kurs bo'yicha dollarga yoziladi.
   Hujjati bor firma/mijozning valyutasini o'zgartirib bo'lmaydi.
 
+### 10.3. Zaxira nusxalar (soatlik)
+
+PosServer bazani (pos.db) har soatda — o'zgarish bo'lgan bo'lsa — ZIP qilib saqlaydi.
+Standart papka: `C:\POSTerminal\nusxalar`. Oxirgi 24 ta, har kunning oxirgisi (30 kun) va
+har oyning oxirgisi (12 oy) qoladi — jami odatda 1 GB dan kam joy egallaydi.
+
+Boshqarish: kassada **Sozlamalar → Sinxronlash → Zaxira nusxalar** (yoki brauzerda
+`http://localhost:8000/nusxalar`, hisobot panelida bosh admin uchun **Nusxalar** tugmasi).
+U yerda:
+
+- papkani o'zgartirish (masalan `D:\Nusxalar` yoki USB disk);
+- **Google Drive**: kompyuterga *Google Drive for desktop* o'rnatib kiring, sahifa Drive
+  papkasini o'zi topadi (`G:\My Drive\POS nusxalar`) — nusxalar bulutga ham yuklanadi;
+- **Hozir nusxa olish**, yuklab olish va **Shu nusxaga qaytarish** (oldin joriy holatdan nusxa
+  olinadi; kassa va telefonlar keyingi sinxronlashda o'zidagi yozuvlarni qayta yuboradi).
+
 ## 11. Muammolar va yechimlar
 
 | Muammo | Yechim |

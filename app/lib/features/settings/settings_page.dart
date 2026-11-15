@@ -788,6 +788,12 @@ class _SyncSectionState extends ConsumerState<_SyncSection> {
                   icon: const Icon(Icons.phonelink),
                   label: const Text('Telefon va internet (QR)'),
                 ),
+              if (hasLocalServer)
+                OutlinedButton.icon(
+                  onPressed: openBackupPage,
+                  icon: const Icon(Icons.backup_outlined),
+                  label: const Text('Zaxira nusxalar'),
+                ),
               if (cameraScanSupported)
                 FilledButton.tonalIcon(
                   onPressed: _scanQr,

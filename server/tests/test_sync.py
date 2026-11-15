@@ -5,6 +5,7 @@ import os
 os.environ["POS_DATABASE_URL"] = "sqlite:///./test_pos.db"
 os.environ["POS_API_KEY"] = "test-key"
 os.environ["POS_IMAGES_DIR"] = "./test_images"
+os.environ["POS_BACKUP_AUTO"] = "0"
 
 import pytest
 from fastapi.testclient import TestClient

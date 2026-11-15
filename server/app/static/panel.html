@@ -86,6 +86,7 @@
       <select id="branch"></select>
       <a class="btn" href="/kassa" title="Brauzerda savdo qilish">Kassa</a>
       <a class="btn hidden" id="connectLink" href="/ulash" target="_blank" title="Telefon yoki kompyuterni QR kod bilan ulash">Qurilma ulash</a>
+      <a class="btn hidden" id="backupLink" href="/nusxalar" target="_blank" title="Bazaning soatlik zaxira nusxalari">Nusxalar</a>
       <span class="muted" id="who"></span>
       <button class="btn" id="logout">Chiqish</button>
     </div>
@@ -343,6 +344,7 @@ async function start() {
     state.branches = me.branches;
     $('#who').textContent = me.name;
     $('#connectLink').classList.toggle('hidden', !me.owner);
+    $('#backupLink').classList.toggle('hidden', !me.owner);
     $('#branch').innerHTML = (state.branches.length > 1 ? '<option value="">Barcha filiallar</option>' : '') +
       state.branches.map((b) => `<option value="${esc(b.id)}">${esc(b.name)}</option>`).join('');
     $('#branch').classList.toggle('hidden', state.branches.length < 2);
